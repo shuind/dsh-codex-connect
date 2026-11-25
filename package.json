@@ -47,9 +47,8 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.client.json",
     "pack:check": "node scripts/lib/check-pack-command.test.mjs && node scripts/lib/check-pack-inventory.test.mjs && node scripts/check-pack.mjs",
-    "check:env-proxy-import": "node scripts/check-env-proxy-import.mjs",
     "check:isolated-import": "node scripts/check-isolated-import.mjs",
-    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run check:env-proxy-import && pnpm run check:isolated-import && pnpm run pack:check",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run check:isolated-import && pnpm run pack:check",
     "prepare": "npm run build",
     "prepublishOnly": "pnpm --config.minimum-release-age=0 run check"
   },
@@ -73,8 +72,7 @@
   ],
   "dependencies": {
     "@deepseek-ai/schemastery": "~3.19.0",
-    "@earendil-works/pi-ai": "^1.5.0",
-    "undici": "^8.12.4"
+    "@earendil-works/pi-ai": "^1.5.0"
   },
   "license": "Apache-2.0",
   "dsh": {
@@ -200,8 +198,8 @@
     "@deepseek-ai/dsh-util-values": "0.2.2-rc.5",
     "@deepseek-ai/dsh-web": "0.2.2-rc.5",
     "@deepseek-ai/dsh-workspace": "0.2.2-rc.5",
-    "@testing-library/react": "^16.3.2",
     "@shikijs/langs": "^4.3.1",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^22.20.0",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.1",
@@ -210,8 +208,8 @@
     "diff": "^9.0.0",
     "eslint": "^10.10.0",
     "immer": "^10.1.1",
-    "katex": "0.18.9",
     "jsdom": "29.1.1",
+    "katex": "0.18.9",
     "mdast-util-from-markdown": "^2.0.3",
     "mdast-util-gfm": "^3.0.0",
     "mdast-util-math": "^3.0.0",

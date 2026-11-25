@@ -6,8 +6,6 @@ import type { OpenAICodexSettingsConfig } from '../../shared/settings.ts'
 import {
   isValidOpenAICodexContextWindowOverrides,
   isValidOpenAICodexImageModelHint,
-  isValidOpenAICodexProxyUrl,
-  normalizeOpenAICodexProxyUrl,
 } from '../../shared/settings.ts'
 import {
   decodeOpenAICodexModelCatalog,
@@ -18,7 +16,6 @@ import type { OpenAICodexModelCatalogEntry } from '../../shared/models.ts'
 import { requestJson } from '../shared/request-json.ts'
 import type { OpenAICodexTranslate } from './AccountSection.tsx'
 import { ModelsSection } from './ModelsSection.tsx'
-import { useProxyTools } from './NetworkSection.tsx'
 import { CapabilitiesSection } from './CapabilitiesSection.tsx'
 import {
   bodyStyle,
@@ -56,15 +53,8 @@ const UNAVAILABLE_SNAPSHOT = {
 
 const CONFIG_FIELDS = [
   'models',
-  'newSessionSpeedMode',
-  'newSubagentSpeedMode',
-  'reasoningEffort',
   'contextWindowOverrides',
-  'enableProxy',
-  'enableNewSessionFastMode',
-  'enableNewSubagentFastMode',
   'enableNativeCompaction',
-  'proxyUrl',
   'enableImageGeneration',
   'imageModelHint',
   'searchModel',
@@ -127,8 +117,6 @@ export function OpenAICodexConfiguration({ scope, t, activeModule, panelIdPrefix
   const dirty = draft !== undefined && baseline !== undefined
     && CONFIG_FIELDS.some(field => !sameField(field, baseline[field], draft[field]))
 
-  const proxy = useProxyTools({ scope, enableProxy: draft?.enableProxy, proxyUrl: draft?.proxyUrl })
-
   useEffect(() => {
     if (scopeRef.current === scope) return
     scopeRef.current = scope
@@ -182,35 +170,24 @@ export function OpenAICodexConfiguration({ scope, t, activeModule, panelIdPrefix
     setFeedback('idle')
   }
 
-  const toggleFastDefault = (target: 'session' | 'subagent', enabled: boolean): void => {
-    setDraft(current => current === undefined ? current : target === 'session'
-      ? { ...current, enableNewSessionFastMode: enabled, newSessionSpeedMode: undefined }
-      : { ...current, enableNewSubagentFastMode: enabled, newSubagentSpeedMode: undefined })
-    setFeedback('idle')
-  }
-
   const discard = (): void => {
     const latest = scope?.getSnapshot().value
     setBaseline(latest)
     setDraft(latest)
     setFeedback('idle')
-    proxy.reset()
   }
 
   const validModel = draft !== undefined && draft.searchModel.trim().length > 0
   const validTokens = draft !== undefined && Number.isInteger(draft.searchMaxOutputTokens) && draft.searchMaxOutputTokens > 0
-  const validProxy = draft !== undefined && (!draft.enableProxy || isValidOpenAICodexProxyUrl(draft.proxyUrl))
   const validImageModelHint = draft !== undefined && isValidOpenAICodexImageModelHint(draft.imageModelHint)
   const validContexts = draft !== undefined && validContextEdits(draft.contextWindowOverrides, baseline?.contextWindowOverrides, modelCatalog)
-  const valid = validModel && validTokens && validProxy && validImageModelHint && validContexts
+  const valid = validModel && validTokens && validImageModelHint && validContexts
 
   const save = async (): Promise<void> => {
     if (scope === undefined || draft === undefined || !snapshot.writable || !valid) return
-    const normalizedProxy = normalizeOpenAICodexProxyUrl(draft.proxyUrl)
     const desired: OpenAICodexSettingsConfig = {
       ...draft,
       searchModel: draft.searchModel.trim(),
-      proxyUrl: normalizedProxy ?? draft.proxyUrl,
     }
     setBusy(true)
     setFeedback('idle')
@@ -228,7 +205,7 @@ export function OpenAICodexConfiguration({ scope, t, activeModule, panelIdPrefix
         }
         const value = field === 'contextWindowOverrides'
           ? { ...Object.fromEntries((modelCatalog ?? []).map(model => [model.id, null])), ...desired.contextWindowOverrides }
-          : field === 'reasoningEffort' || field === 'newSessionSpeedMode' || field === 'newSubagentSpeedMode' ? desired[field] ?? null : desired[field]
+          : desired[field]
         return value === undefined ? { op: 'unset', path: [field] } : { op: 'set', path: [field], value }
       })
       if (ops.length > 0 && !await scope.mutate(ops, current.revision)) throw new Error('Host refused the configuration change')
@@ -317,10 +294,8 @@ export function OpenAICodexConfiguration({ scope, t, activeModule, panelIdPrefix
               validModel={validModel}
               validTokens={validTokens}
               validImageModelHint={validImageModelHint}
-              proxy={proxy}
               t={t}
               onUpdate={update}
-              onToggleFastDefault={toggleFastDefault}
             />
           </fieldset>
         </>

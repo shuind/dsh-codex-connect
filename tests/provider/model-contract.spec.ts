@@ -84,4 +84,19 @@ describe('model-specific configuration ceilings', () => {
     expect(decodeOpenAICodexModelCatalog([model, model])).toBeUndefined()
     expect(openAICodexModelCatalog()[0]).not.toBe(model)
   })
+
+  it('orders the catalog from strongest newest tier to lightest oldest tier', () => {
+    expect(openAICodexModelCatalog().map(model => model.id)).toEqual([
+      'gpt-6.2-astra',
+      'gpt-6.2-sol',
+      'gpt-6.1-sol',
+      'gpt-6.1-terra',
+      'gpt-6-astra',
+      'gpt-6-sol',
+      'gpt-6-luna',
+      'gpt-5.6-sol',
+      'gpt-5.6-terra',
+      'gpt-5.6-luna',
+    ])
+  })
 })

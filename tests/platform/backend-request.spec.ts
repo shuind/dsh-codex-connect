@@ -39,7 +39,7 @@ describe('shared Codex backend request policy', () => {
   })
 
   it('holds provider concurrency until the response body is consumed or cancelled', async () => {
-    const manager = new OpenAICodexBackendRequests(undefined, () => undefined, 1)
+    const manager = new OpenAICodexBackendRequests(1)
     const controllers: ReadableStreamDefaultController<Uint8Array>[] = []
     const base = vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
       start(controller) { controllers.push(controller) },
@@ -62,7 +62,7 @@ describe('shared Codex backend request policy', () => {
   })
 
   it('keeps queued network work abortable without dispatching it', async () => {
-    const manager = new OpenAICodexBackendRequests(undefined, () => undefined, 1)
+    const manager = new OpenAICodexBackendRequests(1)
     const first = await manager.wrapFetch({ lane: 'model', fetch: async () => new Response(new ReadableStream()) })(URL)
     const controller = new AbortController()
     const secondFetch = vi.fn(async () => new Response(null))
@@ -77,7 +77,7 @@ describe('shared Codex backend request policy', () => {
   })
 
   it('applies Retry-After only to the affected lane without occupying a concurrency slot', async () => {
-    const manager = new OpenAICodexBackendRequests(undefined, () => undefined, 1)
+    const manager = new OpenAICodexBackendRequests(1)
     const searchBase = vi.fn()
       .mockResolvedValueOnce(new Response(null, { status: 429, headers: { 'retry-after': '2' } }))
       .mockResolvedValue(new Response(null, { status: 200 }))
@@ -100,7 +100,7 @@ describe('shared Codex backend request policy', () => {
   })
 
   it('turns a managed deadline into a TimeoutError and rejects non-backend dispatch before fetch', async () => {
-    const manager = new OpenAICodexBackendRequests(undefined, () => undefined, 1)
+    const manager = new OpenAICodexBackendRequests(1)
     const base = vi.fn()
     await expect(manager.run({ lane: 'search' }, context => context.fetch('https://evil.example/backend-api/test', {}, { fetch: base })))
       .rejects.toThrow('chatgpt.com/backend-api')
@@ -132,7 +132,7 @@ describe('shared Codex backend request policy', () => {
   })
 
   it('disposal aborts active and queued managed work and prevents new admission', async () => {
-    const manager = new OpenAICodexBackendRequests(undefined, () => undefined, 1)
+    const manager = new OpenAICodexBackendRequests(1)
     const base = vi.fn(async () => new Response(new ReadableStream<Uint8Array>()))
     const fetch = manager.wrapFetch({ lane: 'model', fetch: base })
     const response = await fetch(URL)

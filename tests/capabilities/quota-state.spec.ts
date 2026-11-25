@@ -41,21 +41,16 @@ async function flush(): Promise<void> {
 function setup(backendRequests?: OpenAICodexBackendRequests) {
   let account = 'acct'
   let user = 'user'
-  let proxy: string | undefined
   const captured = { captureActiveAccount: vi.fn(async () => captured) }
-  const proxyManager = { run: vi.fn((_proxy: string | undefined, operation: () => unknown) => operation()) }
   readAuth.mockImplementation(async () => ({ access: token(account, user), accountId: account }))
   readResponse.mockImplementation(async () => response(account, user))
   const state = new OpenAICodexQuotaState({
     credentials: captured as unknown as OpenAICodexCredentialStore,
-    proxyManager: proxyManager as never,
-    resolveProxyUrl: () => proxy,
     backendRequests,
   })
   return {
-    state, captured, proxyManager,
+    state, captured,
     setAccount(value: string, nextUser = 'user') { account = value; user = nextUser },
-    setProxy(value: string | undefined) { proxy = value },
   }
 }
 
@@ -168,23 +163,6 @@ describe('OpenAICodexQuotaState acceptance', () => {
     const cancelled = h.state.read(undefined, controller.signal); const survivor = h.state.read()
     controller.abort(); await expect(cancelled).rejects.toMatchObject({ name: 'AbortError' })
     get.resolve(response()); await expect(survivor).resolves.toMatchObject({ usage: expect.anything() })
-    await h.state.dispose()
-  })
-
-  it('performs auth and usage inside the selected proxy scope', async () => {
-    const h = setup(); let inScope = false
-    h.proxyManager.run.mockImplementation((_proxy, operation) => { inScope = true; const result = operation(); inScope = false; return result })
-    readAuth.mockImplementation(async () => { expect(inScope).toBe(true); return { access: token('acct', 'user'), accountId: 'acct' } })
-    readResponse.mockImplementation(async () => { expect(inScope).toBe(true); return response() })
-    h.setProxy('http://127.0.0.1:8080'); await h.state.read()
-    expect(h.proxyManager.run).toHaveBeenCalledWith('http://127.0.0.1:8080', expect.any(Function))
-    await h.state.dispose()
-  })
-
-  it('invalidates observations on proxy configuration changes', async () => {
-    const h = setup()
-    await h.state.read(); h.setProxy('http://127.0.0.1:8080'); await h.state.read()
-    expect(readResponse).toHaveBeenCalledTimes(2)
     await h.state.dispose()
   })
 

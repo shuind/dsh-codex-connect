@@ -1,10 +1,7 @@
-/** Grouped settings cards: speed & reasoning, web search, context & images, and proxy. */
+/** Grouped settings cards: web search (with accuracy reference) and context & images. */
 
 import type { OpenAICodexSettingsConfig } from '../../shared/settings.ts'
-import { OPENAI_CODEX_REASONING_EFFORTS, parseOpenAICodexReasoningEffort } from '../../shared/models.ts'
 import type { OpenAICodexTranslate } from './AccountSection.tsx'
-import { ProxyCard } from './NetworkSection.tsx'
-import type { ProxyToolsState } from './NetworkSection.tsx'
 import {
   badgeStyle,
   bodyStyle,
@@ -12,6 +9,7 @@ import {
   formFieldStyle,
   formGridStyle,
   labelStyle,
+  monoStyle,
   subPanelStyle,
 } from './styles.ts'
 
@@ -23,14 +21,26 @@ export interface CapabilitiesSectionProps {
   validModel: boolean
   validTokens: boolean
   validImageModelHint: boolean
-  proxy: ProxyToolsState
   t: OpenAICodexTranslate
   onUpdate: <Key extends keyof OpenAICodexSettingsConfig>(
     field: Key,
     value: OpenAICodexSettingsConfig[Key],
   ) => void
-  onToggleFastDefault: (target: 'session' | 'subagent', enabled: boolean) => void
 }
+
+const BROWSECOMP_ENTRIES = [
+  { modelId: 'gpt-6.2-sol', label: 'GPT-6.2', score: '64.5%' },
+  { modelId: 'gpt-6-sol', label: 'GPT-6', score: '54.4%' },
+] as const
+
+const FACTS_SEARCH_V2_ENTRIES = [
+  { modelId: 'gpt-6-astra', label: 'GPT-6 Astra', score: '93.3%', date: '2026-11-05' },
+  { modelId: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', score: '92.9%', date: '2026-11-11' },
+  { modelId: 'gpt-6.1-sol', label: 'GPT-6.1 Sol', score: '92.8%', date: '2026-11-05' },
+  { modelId: 'gpt-6.1-terra', label: 'GPT-6.1 Terra', score: '92.7%', date: '2026-11-06' },
+] as const
+
+const KAGGLE_FACTS_URL = 'https://www.kaggle.com/benchmarks/google/facts'
 
 export function CapabilitiesSection({
   panelPrefix,
@@ -40,13 +50,10 @@ export function CapabilitiesSection({
   validModel,
   validTokens,
   validImageModelHint,
-  proxy,
   t,
   onUpdate,
-  onToggleFastDefault,
 }: CapabilitiesSectionProps) {
-  const sessionFast = (draft.newSessionSpeedMode ?? (draft.enableNewSessionFastMode ? 'fast' : 'standard')) === 'fast'
-  const subagentFast = (draft.newSubagentSpeedMode ?? (draft.enableNewSubagentFastMode ? 'fast' : 'standard')) === 'fast'
+  const activeSearchModel = draft.searchModel.trim()
 
   return (
     <div
@@ -56,50 +63,6 @@ export function CapabilitiesSection({
       hidden={!visible}
       style={{ ...fieldsetStyle, display: visible ? fieldsetStyle.display : 'none' }}
     >
-      <div className="cc-card" role="group" aria-label={t('speedAndReasoningHeading')}>
-        <h3 className="cc-card-title">{t('speedAndReasoningHeading')}</h3>
-        <div className="cc-row">
-          <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-            <label htmlFor={`${panelPrefix}-reasoning`} style={labelStyle}>{t('reasoningEffort')}</label>
-            <span style={bodyStyle}>{t('reasoningEffortHelp')}</span>
-          </span>
-          <select
-            id={`${panelPrefix}-reasoning`}
-            className="cc-input"
-            style={{ width: 150, flexShrink: 0 }}
-            value={draft.reasoningEffort ?? ''}
-            onChange={event => { onUpdate('reasoningEffort', parseOpenAICodexReasoningEffort(event.currentTarget.value || undefined) ?? undefined) }}
-          >
-            <option value="">{t('reasoningProviderDefault')}</option>
-            {OPENAI_CODEX_REASONING_EFFORTS.map(effort => <option key={effort} value={effort}>{effort}</option>)}
-          </select>
-        </div>
-        <label className="cc-row" style={{ cursor: 'pointer' }}>
-          <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-            <span style={labelStyle}>{t('enableNewSessionFastMode')}</span>
-            <span style={bodyStyle}>{t('enableNewSessionFastModeHelp')}</span>
-          </span>
-          <input
-            type="checkbox"
-            className="cc-switch"
-            checked={sessionFast}
-            onChange={event => { onToggleFastDefault('session', event.currentTarget.checked) }}
-          />
-        </label>
-        <label className="cc-row" style={{ cursor: 'pointer' }}>
-          <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-            <span style={labelStyle}>{t('enableNewSubagentFastMode')}</span>
-            <span style={bodyStyle}>{t('enableNewSubagentFastModeHelp')}</span>
-          </span>
-          <input
-            type="checkbox"
-            className="cc-switch"
-            checked={subagentFast}
-            onChange={event => { onToggleFastDefault('subagent', event.currentTarget.checked) }}
-          />
-        </label>
-      </div>
-
       <div className="cc-card" role="group" aria-label={t('searchHeading')}>
         <h3 className="cc-card-title">{t('searchHeading')}</h3>
         <label className="cc-row" style={{ cursor: 'pointer', borderBottom: 0, paddingBottom: 0 }}>
@@ -165,6 +128,105 @@ export function CapabilitiesSection({
             </div>
           </div>
         ) : null}
+
+        <details style={{ marginTop: 10, paddingTop: 10, borderTop: '0.5px solid var(--dsw-alias-border-l1, var(--dsw-alias-border-l2))' }}>
+          <summary style={{ ...bodyStyle, cursor: 'pointer', fontWeight: 500, color: 'var(--dsw-alias-label-primary)' }}>
+            {t('searchLeaderboardSummary')}
+          </summary>
+          <div style={{ ...subPanelStyle, marginTop: 8, gap: 12 }}>
+            <div>
+              <div style={{ ...labelStyle, fontSize: 12, marginBottom: 2 }}>{t('searchLeaderboardBrowseCompTitle')}</div>
+              <p style={{ ...bodyStyle, marginBottom: 6 }}>{t('searchLeaderboardBrowseCompNote')}</p>
+              <table className="cc-table">
+                <thead>
+                  <tr>
+                    <th>{t('searchLeaderboardModelCol')}</th>
+                    <th style={{ textAlign: 'right' }}>{t('searchLeaderboardScoreCol')}</th>
+                    {draft.enableSearch ? <th /> : null}
+                  </tr>
+                </thead>
+                <tbody>
+                  {BROWSECOMP_ENTRIES.map(entry => {
+                    const selected = activeSearchModel === entry.modelId
+                    return (
+                      <tr key={entry.modelId}>
+                        <td>
+                          <span style={{ fontWeight: 500 }}>{entry.label}</span>
+                          <span style={{ ...monoStyle, marginLeft: 6 }}>{entry.modelId}</span>
+                        </td>
+                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{entry.score}</td>
+                        {draft.enableSearch ? (
+                          <td style={{ textAlign: 'right', width: 1 }}>
+                            <button
+                              type="button"
+                              className="cc-btn cc-btn-ghost"
+                              disabled={selected}
+                              onClick={() => { onUpdate('searchModel', entry.modelId) }}
+                            >
+                              {selected ? t('searchLeaderboardSelectedModel') : t('searchLeaderboardUseModel')}
+                            </button>
+                          </td>
+                        ) : null}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 2 }}>
+                <span style={{ ...labelStyle, fontSize: 12 }}>{t('searchLeaderboardFactsTitle')}</span>
+                <a
+                  href={KAGGLE_FACTS_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ ...bodyStyle, textDecoration: 'underline', textUnderlineOffset: 3 }}
+                >
+                  {t('searchLeaderboardOpenKaggle')}
+                </a>
+              </div>
+              <p style={{ ...bodyStyle, marginBottom: 6 }}>{t('searchLeaderboardFactsNote')}</p>
+              <table className="cc-table">
+                <thead>
+                  <tr>
+                    <th>{t('searchLeaderboardModelCol')}</th>
+                    <th style={{ textAlign: 'right' }}>{t('searchLeaderboardDateCol')}</th>
+                    <th style={{ textAlign: 'right' }}>{t('searchLeaderboardScoreCol')}</th>
+                    {draft.enableSearch ? <th /> : null}
+                  </tr>
+                </thead>
+                <tbody>
+                  {FACTS_SEARCH_V2_ENTRIES.map(entry => {
+                    const selected = activeSearchModel === entry.modelId
+                    return (
+                      <tr key={entry.modelId}>
+                        <td>
+                          <span style={{ fontWeight: 500 }}>{entry.label}</span>
+                          <span style={{ ...monoStyle, marginLeft: 6 }}>{entry.modelId}</span>
+                        </td>
+                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--dsw-alias-label-secondary)' }}>{entry.date}</td>
+                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{entry.score}</td>
+                        {draft.enableSearch ? (
+                          <td style={{ textAlign: 'right', width: 1 }}>
+                            <button
+                              type="button"
+                              className="cc-btn cc-btn-ghost"
+                              disabled={selected}
+                              onClick={() => { onUpdate('searchModel', entry.modelId) }}
+                            >
+                              {selected ? t('searchLeaderboardSelectedModel') : t('searchLeaderboardUseModel')}
+                            </button>
+                          </td>
+                        ) : null}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
       </div>
 
       <div className="cc-card" role="group" aria-label={t('contextAndImagesHeading')}>
@@ -235,8 +297,6 @@ export function CapabilitiesSection({
           ) : null}
         </div>
       </div>
-
-      <ProxyCard draft={draft} proxy={proxy} t={t} onUpdate={onUpdate} />
     </div>
   )
 }

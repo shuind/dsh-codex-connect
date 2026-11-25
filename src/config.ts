@@ -5,7 +5,6 @@ import z from '@deepseek-ai/schemastery'
 import { RetryPolicySchema, resolveRetryPolicy } from '@deepseek-ai/dsh-llm'
 import type { RetryPolicyConfig } from '@deepseek-ai/dsh-llm'
 import {
-  DEFAULT_OPENAI_CODEX_PROXY_URL,
   DEFAULT_OPENAI_CODEX_SEARCH_CONTEXT_SIZE,
   DEFAULT_OPENAI_CODEX_SEARCH_MAX_OUTPUT_TOKENS,
   DEFAULT_OPENAI_CODEX_SEARCH_MODE,
@@ -27,8 +26,6 @@ export interface Config {
   retryPolicy?: RetryPolicyConfig | undefined
   oauthTimeoutMs?: number
   models?: string[] | undefined
-  enableProxy?: boolean
-  proxyUrl?: string
   contextWindowOverrides?: Record<string, number | null> | null | undefined
   enableSearch?: boolean
   enableNewSessionFastMode?: boolean
@@ -51,8 +48,6 @@ export interface VolatileConfig {
   retryPolicy?: RetryPolicyConfig | undefined
   oauthTimeoutMs: number
   models: Volatile<string[] | undefined>
-  enableProxy: Volatile<boolean>
-  proxyUrl: Volatile<string>
   contextWindowOverrides: Volatile<Record<string, number | null> | null | undefined>
   enableSearch: Volatile<boolean>
   enableNewSessionFastMode: Volatile<boolean>
@@ -92,8 +87,6 @@ export const Config: z<Config, VolatileConfig> = z.object({
   }).description('Optional Host model-request retry policy. Omit for existing defaults; reload the plugin after changes.'),
   oauthTimeoutMs: z.number().step(1).min(1_000).max(1_800_000).default(OPENAI_CODEX_AUTHORIZATION_TIMEOUT_MS),
   models: z.union([z.const(undefined), z.array(z.string())]).volatile(),
-  enableProxy: z.boolean().default(false).volatile(),
-  proxyUrl: z.string().default(DEFAULT_OPENAI_CODEX_PROXY_URL).volatile(),
   contextWindowOverrides: z.transform(
     z.union([z.const(undefined), z.const(null), z.dict(z.union([z.const(null), z.number()]))]),
     parseSettingsContextWindowOverrides,

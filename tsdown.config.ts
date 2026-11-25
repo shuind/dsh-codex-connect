@@ -33,12 +33,6 @@ export default [
     fixedExtension: false,
     dts: true,
     clean: true,
-    // Keep dispatcher preservation ahead of external providers' initialization.
-    outputOptions: {
-      codeSplitting: {
-        groups: [{ name: 'undici-runtime', test: /[\\/]src[\\/]platform[\\/]http[\\/]undici-runtime\.ts$/u }],
-      },
-    },
     define: {
       __CODEX_CONNECT_VERSION__: JSON.stringify(PACKAGE_VERSION),
     },

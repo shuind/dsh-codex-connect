@@ -3,7 +3,7 @@
 import type { Model, Provider } from '@earendil-works/pi-ai'
 import { openaiCodexProvider } from '@earendil-works/pi-ai/providers/openai-codex'
 import type { OpenAICodexModelCatalogEntry } from '../../shared/models.ts'
-import { openAICodexContextLimit } from '../../shared/models.ts'
+import { openAICodexContextLimit, sortOpenAICodexModels } from '../../shared/models.ts'
 import { OPENAI_CODEX_PROVIDER } from '../../platform/auth/store.ts'
 
 /** Official Codex id supplied when the installed pi-ai catalog predates Astra. */
@@ -85,7 +85,8 @@ export function withOpenAICodexModels(
       }
     }
   }
-  return { ...baseline, getModels: () => models }
+  const ordered = sortOpenAICodexModels(models)
+  return { ...baseline, getModels: () => ordered }
 }
 
 /** Return a detached copy of the effective Codex model catalog. */

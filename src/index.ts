@@ -4,7 +4,6 @@
  * @module dsh-codex-connect
  */
 
-import './platform/http/undici-runtime.ts'
 import './features/provider/message-source.ts'
 import type { Context, Fiber } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
@@ -20,14 +19,11 @@ import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-settings'
 import {
   OPENAI_CODEX_SETTINGS_NAMESPACE,
-  resolveOpenAICodexProxyUrl,
   resolveOpenAICodexSettings,
 } from './shared/settings.ts'
 import type { OpenAICodexSettingsInput } from './shared/settings.ts'
 import { OpenAICodexCredentialStore, OPENAI_CODEX_PROVIDER } from './platform/auth/store.ts'
 import { OpenAICodexBackendRequests } from './platform/http/backend-request.ts'
-import { OpenAICodexProxyManager } from './platform/http/proxy-manager.ts'
-import { registerOpenAICodexProxyRoutes } from './platform/http/proxy-routes.ts'
 import { OPENAI_CODEX_TRUSTED_ORIGINS_FILENAME, OpenAICodexTrustedOriginsStore } from './platform/http/trusted-origins.ts'
 import { assertNoOpenAICodexProviderConflict } from './platform/runtime/doctor.ts'
 import { registerOpenAICodexUpdateRoutes } from './platform/update/routes.ts'
@@ -80,21 +76,14 @@ export type {
 } from './shared/auth.ts'
 export {
   decodeOpenAICodexSettings,
-  DEFAULT_OPENAI_CODEX_PROXY_URL,
   DEFAULT_OPENAI_CODEX_IMAGE_MODEL_HINT,
   DEFAULT_OPENAI_CODEX_SETTINGS,
   isValidOpenAICodexImageModelHint,
   isValidOpenAICodexContextWindowOverrides,
-  isValidOpenAICodexProxyUrl,
-  OPENAI_CODEX_PROXY_DETECT_PATH,
-  OPENAI_CODEX_PROXY_TEST_PATH,
   OPENAI_CODEX_SETTINGS_NAMESPACE,
-  resolveOpenAICodexProxyUrl,
   resolveOpenAICodexSettings,
 } from './shared/settings.ts'
 export type {
-  OpenAICodexProxyProbeClassification,
-  OpenAICodexProxyProbeResult,
   OpenAICodexSearchContextSize,
   OpenAICodexSearchMode,
   OpenAICodexSettingsConfig,
@@ -121,15 +110,6 @@ export type {
   OpenAICodexTransportErrorCode,
   OpenAICodexTransportV1,
 } from './features/images/transport.ts'
-export {
-  detectOpenAICodexProxies,
-  listOpenAICodexProxyCandidates,
-  OPENAI_CODEX_LOCAL_PROXY_CANDIDATES,
-  OPENAI_CODEX_PROXY_CANDIDATE_LIMIT,
-  OPENAI_CODEX_PROXY_PROBE_TIMEOUT_MS,
-  OPENAI_CODEX_PROXY_PROBE_URL,
-  OpenAICodexProxyManager,
-} from './platform/http/proxy-manager.ts'
 export { loginOpenAICodex, logoutOpenAICodex, openAICodexAuthStatus } from './platform/auth/oauth-client.ts'
 export type { OpenAICodexAuthStatus } from './platform/auth/oauth-client.ts'
 export {
@@ -189,8 +169,6 @@ function readSettingsInput(config: Config | VolatileConfig): OpenAICodexSettings
     newSubagentSpeedMode: configValue(config.newSubagentSpeedMode),
     reasoningEffort: configValue(config.reasoningEffort),
     models: configValue(config.models),
-    enableProxy: configValue(config.enableProxy),
-    proxyUrl: configValue(config.proxyUrl),
     contextWindowOverrides: configValue(config.contextWindowOverrides),
     enableSearch: configValue(config.enableSearch),
     enableNativeCompaction: configValue(config.enableNativeCompaction),
@@ -216,12 +194,9 @@ export function apply(ctx: Context, config: Config | VolatileConfig): void {
   resolveOpenAICodexSettings(initial)
   assertOpenAICodexContextWindowOverrides(initial.contextWindowOverrides ?? undefined, catalog)
 
-  const proxyManager = new OpenAICodexProxyManager()
-  const resolveProviderProxyUrl = (): string | undefined => resolveOpenAICodexProxyUrl(resolveOpenAICodexSettings(current()))
-  const backendRequests = new OpenAICodexBackendRequests(proxyManager, resolveProviderProxyUrl)
+  const backendRequests = new OpenAICodexBackendRequests()
   ctx.effect(() => () => backendRequests.dispose())
 
-  let proxyWasActive = resolveProviderProxyUrl() !== undefined
   const credentials = new OpenAICodexCredentialStore()
   const imageAssets = new OpenAICodexImageAssetStore()
   const trustedOrigins = new OpenAICodexTrustedOriginsStore(
@@ -235,24 +210,18 @@ export function apply(ctx: Context, config: Config | VolatileConfig): void {
   )
   const quota = new OpenAICodexQuotaState({
     credentials,
-    proxyManager,
     backendRequests,
-    resolveProxyUrl: resolveProviderProxyUrl,
   })
   assertNoOpenAICodexProviderConflict(ctx.llm.listProviders().map(provider => provider.id))
   new OpenAICodexTransport(
     ctx,
     credentials,
-    proxyManager,
-    resolveProviderProxyUrl,
     () => resolveOpenAICodexSettings(current()).imageModelHint,
     backendRequests,
   )
   const adapter = createOpenAICodexAdapter(credentials, () => ctx.get('attachments'), {
     fastMode,
     visibleModelIds: () => resolveOpenAICodexSettings(current()).models,
-    proxyManager,
-    resolveProxyUrl: resolveProviderProxyUrl,
     contextWindowOverrides: () => resolveOpenAICodexSettings(current()).contextWindowOverrides,
     nativeCompactionEnabled: () => resolveOpenAICodexSettings(current()).enableNativeCompaction,
     backendRequests,
@@ -276,12 +245,9 @@ export function apply(ctx: Context, config: Config | VolatileConfig): void {
       credentials,
       trustedOrigins,
       fastMode,
-      proxyManager,
-      resolveProviderProxyUrl,
       configValue(config.oauthTimeoutMs) ?? OPENAI_CODEX_AUTHORIZATION_TIMEOUT_MS,
       quota,
     )
-    registerOpenAICodexProxyRoutes(webCtx, trustedOrigins, proxyManager)
     registerOpenAICodexOriginalImageRoute(webCtx, trustedOrigins, imageAssets)
   })
 
@@ -317,8 +283,6 @@ export function apply(ctx: Context, config: Config | VolatileConfig): void {
         contextSize: nextRegistration.contextSize,
         maxOutputTokens: nextRegistration.maxOutputTokens,
         resolveRequestId: () => String(webCtx.get('agents')?.currentInitiator()?.session.id ?? randomUUID()),
-        proxyManager,
-        resolveProxyUrl: resolveProviderProxyUrl,
         backendRequests,
       })
       const unregister = webCtx.web.registerSearchProvider(provider)
@@ -385,19 +349,10 @@ export function apply(ctx: Context, config: Config | VolatileConfig): void {
       search?.dispose() ?? Promise.resolve(),
       imageGeneration?.dispose() ?? Promise.resolve(),
     ])
-    await proxyManager.dispose()
   }, 'dsh-codex-connect: optional capability lifecycle')
 
   ctx.on('loader/volatile-update', () => {
     quota.invalidate()
-    const proxyIsActive = resolveProviderProxyUrl() !== undefined
-    if (proxyWasActive && !proxyIsActive) {
-      void proxyManager.deactivate().catch((error: unknown) => {
-        ctx.logger.error('dsh-codex-connect: could not deactivate the provider proxy')
-        ctx.logger.error(error)
-      })
-    }
-    proxyWasActive = proxyIsActive
     scheduleCapabilities()
   })
   ctx.inject(['settings'], settingsCtx => {

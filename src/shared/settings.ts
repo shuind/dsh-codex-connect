@@ -1,18 +1,10 @@
-/** Node-free settings and proxy route contract shared by Host and browser. */
+/** Node-free settings contract shared by Host and browser. */
 
 import { OPENAI_CODEX_REASONING_EFFORTS, parseOpenAICodexReasoningEffort, parseOpenAICodexSpeedDefault } from './models.ts'
 import type { OpenAICodexReasoningEffort, OpenAICodexSpeedMode } from './models.ts'
 
 /** Stable Harness settings namespace owned by this plugin. */
 export const OPENAI_CODEX_SETTINGS_NAMESPACE = 'llm-openai-codex'
-
-/** Detect bounded local/environment proxy candidates without changing settings. */
-export const OPENAI_CODEX_PROXY_DETECT_PATH = '/plugins/dsh-openai-codex/proxy/detect'
-/** Test one manually entered proxy origin without changing settings. */
-export const OPENAI_CODEX_PROXY_TEST_PATH = '/plugins/dsh-openai-codex/proxy/test'
-
-/** Suggested local HTTP proxy shown by the settings UI; it is never enabled by default. */
-export const DEFAULT_OPENAI_CODEX_PROXY_URL = 'http://127.0.0.1:7890'
 
 /** Empty profile setting, which makes image requests use the default route hint. */
 export const DEFAULT_OPENAI_CODEX_IMAGE_MODEL_HINT = ''
@@ -28,31 +20,6 @@ export function parseOpenAICodexImageModelHint(value: unknown): string {
     throw new TypeError('OpenAI Codex imageModelHint must be empty or a bounded ASCII model slug')
   }
   return value
-}
-
-/**
- * Normalize the credential-free HTTP proxy URL accepted by Codex Connect.
- * Paths, query strings, fragments, and embedded credentials are rejected so
- * the value remains an origin rather than an opaque request target.
- */
-export function normalizeOpenAICodexProxyUrl(value: unknown): string | undefined {
-  if (typeof value !== 'string' || value.trim().length === 0) return undefined
-  try {
-    const parsed = new URL(value.trim())
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined
-    if (parsed.username !== '' || parsed.password !== '') return undefined
-    if (parsed.pathname !== '/' || parsed.search !== '' || parsed.hash !== '') return undefined
-    if (parsed.hostname.length === 0) return undefined
-    if (parsed.port !== '' && (!/^\d+$/u.test(parsed.port) || Number(parsed.port) < 1 || Number(parsed.port) > 65_535)) return undefined
-    return parsed.origin
-  } catch {
-    return undefined
-  }
-}
-
-/** Whether a value is a supported, canonical HTTP(S) proxy origin. */
-export function isValidOpenAICodexProxyUrl(value: unknown): value is string {
-  return normalizeOpenAICodexProxyUrl(value) !== undefined
 }
 
 /** Search modes accepted by the Codex standalone search endpoint. */
@@ -105,10 +72,6 @@ export interface OpenAICodexSettingsConfig {
   models: string[] | undefined
   /** Optional fallback when a request does not specify reasoning effort. */
   reasoningEffort: OpenAICodexReasoningEffort | undefined
-  /** Route Codex Connect requests through the explicitly configured proxy. */
-  enableProxy: boolean
-  /** Credential-free HTTP(S) proxy origin; inactive while enableProxy is false. */
-  proxyUrl: string
   /** Per-model context-window overrides keyed by catalog model id. */
   contextWindowOverrides: Readonly<Record<string, number>> | undefined
   enableSearch: boolean
@@ -134,8 +97,6 @@ export interface OpenAICodexSettingsConfig {
 export const DEFAULT_OPENAI_CODEX_SETTINGS: Readonly<OpenAICodexSettingsConfig> = Object.freeze({
   models: undefined,
   reasoningEffort: undefined,
-  enableProxy: false,
-  proxyUrl: DEFAULT_OPENAI_CODEX_PROXY_URL,
   contextWindowOverrides: undefined,
   enableSearch: false,
   enableNewSessionFastMode: false,
@@ -170,9 +131,6 @@ export function resolveOpenAICodexSettings(
   if (typeof resolved.enableNativeCompaction !== 'boolean') {
     throw new TypeError('OpenAI Codex enableNativeCompaction must be a boolean')
   }
-  if (!isValidOpenAICodexProxyUrl(resolved.proxyUrl)) {
-    throw new TypeError('OpenAI Codex proxyUrl must be an HTTP(S) origin without credentials or a path')
-  }
   parseOpenAICodexImageModelHint(resolved.imageModelHint)
   return {
     ...resolved,
@@ -181,14 +139,6 @@ export function resolveOpenAICodexSettings(
     newSubagentSpeedMode: parseOpenAICodexSpeedDefault(resolved.newSubagentSpeedMode) ?? undefined,
     contextWindowOverrides: resolveOpenAICodexContextWindowOverrides(resolved.contextWindowOverrides),
   }
-}
-
-/** Resolve the active proxy without treating a disabled value as a route. */
-export function resolveOpenAICodexProxyUrl(
-  value: OpenAICodexSettingsInput,
-): string | undefined {
-  const resolved = resolveOpenAICodexSettings(value)
-  return resolved.enableProxy ? normalizeOpenAICodexProxyUrl(resolved.proxyUrl) : undefined
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -206,8 +156,6 @@ export function decodeOpenAICodexSettings(value: unknown): OpenAICodexSettingsCo
   const reasoningEffort = value['reasoningEffort']
   if (reasoningEffort !== undefined && reasoningEffort !== null && (typeof reasoningEffort !== 'string' || !OPENAI_CODEX_REASONING_EFFORTS.some(effort => effort === reasoningEffort))) return undefined
   const models = value['models']
-  const enableProxy = value['enableProxy']
-  const proxyUrl = value['proxyUrl']
   const contextWindowOverrides = value['contextWindowOverrides']
   const enableSearch = value['enableSearch']
   const enableNewSessionFastMode = value['enableNewSessionFastMode']
@@ -220,8 +168,6 @@ export function decodeOpenAICodexSettings(value: unknown): OpenAICodexSettingsCo
   const searchContextSize = value['searchContextSize']
   const searchMaxOutputTokens = value['searchMaxOutputTokens']
   if (models !== undefined && (!Array.isArray(models) || models.some(model => typeof model !== 'string'))) return undefined
-  if (enableProxy !== undefined && typeof enableProxy !== 'boolean') return undefined
-  if (proxyUrl !== undefined && (typeof proxyUrl !== 'string' || !isValidOpenAICodexProxyUrl(proxyUrl))) return undefined
   if (contextWindowOverrides !== undefined && contextWindowOverrides !== null && !isValidOpenAICodexContextWindowOverrides(contextWindowOverrides)) return undefined
   if (typeof enableSearch !== 'boolean') return undefined
   if (enableNewSessionFastMode !== undefined && typeof enableNewSessionFastMode !== 'boolean') return undefined
@@ -239,8 +185,6 @@ export function decodeOpenAICodexSettings(value: unknown): OpenAICodexSettingsCo
     newSubagentSpeedMode: parseOpenAICodexSpeedDefault(newSubagentSpeedMode) ?? undefined,
     reasoningEffort: parseOpenAICodexReasoningEffort(reasoningEffort) ?? undefined,
     models: models === undefined ? undefined : [...new Set(models)],
-    enableProxy: enableProxy ?? false,
-    proxyUrl: proxyUrl === undefined ? DEFAULT_OPENAI_CODEX_PROXY_URL : normalizeOpenAICodexProxyUrl(proxyUrl)!,
     contextWindowOverrides: overrides === undefined ? undefined : Object.freeze(overrides),
     enableSearch,
     enableNewSessionFastMode: enableNewSessionFastMode ?? false,
@@ -253,28 +197,4 @@ export function decodeOpenAICodexSettings(value: unknown): OpenAICodexSettingsCo
     searchContextSize,
     searchMaxOutputTokens,
   }
-}
-
-/** Stable probe classifications safe to display in the browser. */
-export type OpenAICodexProxyProbeClassification =
-  | 'reachable'
-  | 'upstream-authentication-required'
-  | 'proxy-authentication-required'
-  | 'dns-failure'
-  | 'connection-refused'
-  | 'timeout'
-  | 'tls-failure'
-  | 'connect-failure'
-  | 'invalid'
-
-/** Result of testing one proxy origin. */
-export interface OpenAICodexProxyProbeResult {
-  /** Canonical proxy origin tested. */
-  proxyUrl: string
-  /** Whether the proxy returned any HTTP response from the probe origin. */
-  reachable: boolean
-  /** Bounded category for a UI troubleshooting message. */
-  classification: OpenAICodexProxyProbeClassification
-  /** Upstream or proxy status, when an HTTP response was received. */
-  status?: number
 }

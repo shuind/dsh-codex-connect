@@ -101,6 +101,38 @@ const CONFIGURATION_LIMITS: Readonly<Record<string, number>> = Object.freeze({
   'gpt-5.4-mini': 272_000,
 })
 
+const MODEL_TIER_PRIORITY: Readonly<Record<string, number>> = Object.freeze({
+  astra: 4,
+  sol: 3,
+  terra: 2,
+  luna: 1,
+  mini: -1,
+})
+
+function modelSortKey(id: string): readonly [number, number, number, number] {
+  const match = /^gpt-(\d+)(?:\.(\d+))?(?:-(.+))?$/iu.exec(id.trim())
+  if (match === null) return [0, 0, 0, 0]
+  const major = Number(match[1])
+  const minor = match[2] === undefined ? 0 : Number(match[2])
+  const suffix = match[3]?.toLowerCase() ?? ''
+  const tier = suffix.length === 0 ? 0 : (MODEL_TIER_PRIORITY[suffix] ?? 0)
+  return [1, major, minor, tier]
+}
+
+/** Sort Codex models from newest/strongest to oldest/lightest while preserving ties. */
+export function sortOpenAICodexModels<T extends { readonly id: string }>(models: readonly T[]): T[] {
+  return models
+    .map((model, index) => ({ model, index, key: modelSortKey(model.id) }))
+    .sort((left, right) => (
+      (right.key[0] - left.key[0])
+      || (right.key[1] - left.key[1])
+      || (right.key[2] - left.key[2])
+      || (right.key[3] - left.key[3])
+      || (left.index - right.index)
+    ))
+    .map(entry => entry.model)
+}
+
 /** Keep unlisted or newer provider defaults usable without inventing a larger limit. */
 export function openAICodexContextLimit(id: string, contextWindow: number): {
   maxContextWindow: number

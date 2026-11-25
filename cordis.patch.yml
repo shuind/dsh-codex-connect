@@ -4,7 +4,6 @@
     - id: llm-openai-codex
       name: "@shuind/dsh-codex-connect"
       config:
-        enableProxy: false
         enableSearch: false
         enableNativeCompaction: false
         enableImageGeneration: false

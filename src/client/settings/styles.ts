@@ -32,6 +32,12 @@ export const CODEX_CONNECT_SETTINGS_CSS = `
 .cc-switch:disabled { opacity: 0.45; cursor: default; }
 .cc-root :is(input, select, button, a, summary):focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-brand-primary)); outline-offset: 2px; }
 .cc-savebar { position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-top: 12px; padding: 10px 14px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-xl, 12px); background: var(--dsw-alias-bg-layer-1, var(--dsw-alias-bg-base)); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1); }
+.cc-table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 18px; }
+.cc-table th, .cc-table td { padding: 5px 6px; text-align: left; border-bottom: 0.5px solid var(--dsw-alias-border-l1, var(--dsw-alias-border-l2)); }
+.cc-table th { font-size: 11px; font-weight: 500; color: var(--dsw-alias-label-secondary); }
+.cc-table tr:last-child td { border-bottom: 0; }
+.cc-group-heading { display: flex; align-items: center; gap: 6px; margin: 12px 0 4px; font-size: 11.5px; line-height: 16px; font-weight: 600; color: var(--dsw-alias-label-secondary); }
+.cc-group-heading:first-child { margin-top: 0; }
 `
 
 export const stackStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 12 }

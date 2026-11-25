@@ -1,5 +1,4 @@
 /** Runtime request governor for authenticated chatgpt.com/backend-api traffic. */
-import type { OpenAICodexProxyManager } from './proxy-manager.ts'
 import {
   readRetryAfterMs,
   prepareOpenAICodexBackendRequest,
@@ -123,8 +122,6 @@ export class OpenAICodexBackendRequests {
   private disposed = false
 
   constructor(
-    private readonly proxyManager?: OpenAICodexProxyManager,
-    private readonly resolveProxyUrl: () => string | undefined = () => undefined,
     private readonly maxConcurrent = OPENAI_CODEX_BACKEND_MAX_CONCURRENT_REQUESTS,
     private readonly beforeAuxiliaryAttempt?: () => Promise<void>,
     private readonly beforeAttempt?: () => Promise<void>,
@@ -231,7 +228,7 @@ export class OpenAICodexBackendRequests {
     }
   }
 
-  /** Own one logical deadline/proxy scope; each HTTP attempt acquires its own slot. */
+  /** Own one logical deadline scope; each HTTP attempt acquires its own slot. */
   async run<T>(
     options: OpenAICodexBackendRunOptions,
     operation: (context: OpenAICodexBackendRunContext) => Promise<T>,
@@ -248,7 +245,7 @@ export class OpenAICodexBackendRequests {
     }
     try {
       signal.throwIfAborted()
-      const execute = () => operation({
+      const result = await operation({
         signal,
         fetch: (input, init, fetchOptions) => {
           const nested = init?.signal ?? (input instanceof Request ? input.signal : undefined)
@@ -256,7 +253,6 @@ export class OpenAICodexBackendRequests {
           return this.wrapFetch({ lane: options.lane, ...fetchOptions })(input, { ...init, signal: fetchSignal })
         },
       })
-      const result = await (this.proxyManager?.run(this.resolveProxyUrl(), execute) ?? execute())
       signal.throwIfAborted()
       return result
     } catch (error: unknown) {
@@ -268,7 +264,7 @@ export class OpenAICodexBackendRequests {
     }
   }
 
-  /** Wrap provider-owned fetch while preserving provider identity and stream proxy lifetime. */
+  /** Wrap provider-owned fetch while preserving provider identity. */
   wrapFetch(options: OpenAICodexBackendFetchOptions): BackendFetch {
     return async (input, init) => {
       const prepared = prepareOpenAICodexBackendRequest(input, init)
@@ -288,11 +284,9 @@ export class OpenAICodexBackendRequests {
     }
   }
 
-  /** Keep the existing proxy lease for the complete provider stream. */
-  runStream<T extends { result(): Promise<unknown> }>(operation: (proxyOrigin: string | undefined) => T): T {
-    if (this.proxyManager === undefined) return operation(undefined)
-    const origin = this.resolveProxyUrl()
-    return this.proxyManager.runStream(origin, () => operation(origin))
+  /** Run a provider stream operation. */
+  runStream<T extends { result(): Promise<unknown> }>(operation: () => T): T {
+    return operation()
   }
 
   /** Abort queued/in-flight managed requests and prevent new admission. */

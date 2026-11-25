@@ -26,7 +26,6 @@ import {
 } from '../../platform/http/request-guard.ts'
 import type { TrustedRequestDecision } from '../../platform/http/request-guard.ts'
 import { OPENAI_CODEX_TRUSTED_ORIGINS_FILENAME, OpenAICodexTrustedOriginsStore } from '../../platform/http/trusted-origins.ts'
-import type { OpenAICodexProxyManager } from '../../platform/http/proxy-manager.ts'
 import { FastModeRegistry, isFastModeSessionId } from '../provider/speed/fast-mode.ts'
 import { ConversationSpeedRegistry, createConversationSpeedRegistry } from '../provider/speed/conversation-speed.ts'
 import type { OpenAICodexQuotaState } from '../quota/state.ts'
@@ -112,8 +111,6 @@ export function registerOpenAICodexAuthRoutes(
   store: OpenAICodexCredentialStore,
   trustedOriginsOverride?: OpenAICodexTrustedOriginsStore,
   fastModeOverride?: FastModeRegistry,
-  proxyManager?: OpenAICodexProxyManager,
-  resolveProxyUrl?: () => string | undefined,
   authorizationTimeoutMs?: number,
   quotaState?: OpenAICodexQuotaState,
 ): void {
@@ -124,7 +121,7 @@ export function registerOpenAICodexAuthRoutes(
     : new OpenAICodexTrustedOriginsStore())
 
   ctx.effect(function* () {
-    const auth = new OpenAICodexWebAuth(store, { proxyManager, resolveProxyUrl, authorizationTimeoutMs, quotaState })
+    const auth = new OpenAICodexWebAuth(store, { authorizationTimeoutMs, quotaState })
     yield () => auth.dispose()
 
     const authorize = async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {

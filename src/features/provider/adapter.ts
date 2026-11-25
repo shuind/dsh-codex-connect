@@ -19,7 +19,6 @@ import {
 import { imageSelectionHandleText } from '../../shared/images/contract.ts'
 import { OPENAI_CODEX_PROVIDER, type OpenAICodexCredentialStore } from '../../platform/auth/store.ts'
 import { readOpenAICodexRequestAuth } from '../../platform/auth/oauth-client.ts'
-import type { OpenAICodexProxyManager } from '../../platform/http/proxy-manager.ts'
 import type { OpenAICodexBackendRequests } from '../../platform/http/backend-request.ts'
 import { streamWithNativeCompactionScope, withOpenAICodexNativeCompaction } from '../compaction/index.ts'
 import { OPENAI_CODEX_TRANSPORT, withOpenAICodexModels } from './model-catalog.ts'
@@ -37,8 +36,6 @@ export const OPENAI_CODEX_REQUEST_IMAGE_MAX_BYTES = 1024 * 1024
 
 export interface OpenAICodexProfileOptions {
   fastMode?: FastModeRegistry | undefined
-  proxyManager?: OpenAICodexProxyManager | undefined
-  resolveProxyUrl?: (() => string | undefined) | undefined
   contextWindowOverrides?: Readonly<Record<string, number>> | undefined
   backendRequests?: OpenAICodexBackendRequests | undefined
   wrapProvider?: ((provider: Provider) => Provider) | undefined
@@ -49,8 +46,6 @@ export interface OpenAICodexProfileOptions {
 export interface OpenAICodexAdapterOptions {
   fastMode?: FastModeRegistry | undefined
   visibleModelIds?: (() => readonly string[] | undefined) | undefined
-  proxyManager?: OpenAICodexProxyManager | undefined
-  resolveProxyUrl?: (() => string | undefined) | undefined
   contextWindowOverrides?: (() => Readonly<Record<string, number>> | undefined) | undefined
   nativeCompactionEnabled?: (() => boolean) | undefined
   backendRequests?: OpenAICodexBackendRequests | undefined
@@ -106,7 +101,7 @@ export function withOpenAICodexFastMode(
 }
 
 function requestProvider(provider: Provider, options: OpenAICodexProfileOptions): Provider {
-  const { fastMode, proxyManager, resolveProxyUrl, backendRequests, wrapProvider } = options
+  const { fastMode, backendRequests, wrapProvider } = options
   const ordinary = withOpenAICodexFastMode(withOpenAICodexNativeCompaction(provider), fastMode)
   const configured = wrapProvider === undefined ? ordinary : wrapProvider(ordinary)
   const streamSimple = configured.streamSimple
@@ -117,9 +112,7 @@ function requestProvider(provider: Provider, options: OpenAICodexProfileOptions)
         const diagnosticOptions = withCodexDiagnosticFetch(streamOptions, backendRequests)
         return streamSimple.call(configured, model, context, codexRequestOptions(provider.id, model, diagnosticOptions))
       }
-      if (backendRequests !== undefined) return backendRequests.runStream(operation)
-      const proxyUrl = resolveProxyUrl?.()
-      return proxyManager?.runStream(proxyUrl, operation) ?? operation()
+      return backendRequests !== undefined ? backendRequests.runStream(operation) : operation()
     },
     auth: {
       ...provider.auth,
@@ -219,7 +212,7 @@ export function createOpenAICodexAdapter(
   options: OpenAICodexAdapterOptions = {},
 ): PiAiAdapter {
   const {
-    fastMode, visibleModelIds, proxyManager, resolveProxyUrl, contextWindowOverrides,
+    fastMode, visibleModelIds, contextWindowOverrides,
     nativeCompactionEnabled, backendRequests, imageEditingEnabled,
     retryPolicyConfig, resolveReasoningEffort,
   } = options
@@ -235,7 +228,7 @@ export function createOpenAICodexAdapter(
     const reasoningEffort = resolveReasoningEffort?.()
     if (profiles === undefined || previousReasoningEffort !== reasoningEffort || !deepEqualJson(previousOverrides, overrides)) {
       const profile = createOpenAICodexProfile(provider, {
-        fastMode, proxyManager, resolveProxyUrl, contextWindowOverrides: overrides,
+        fastMode, contextWindowOverrides: overrides,
         backendRequests, retryPolicy, reasoningEffort,
       })
       previousReasoningEffort = reasoningEffort
@@ -280,10 +273,7 @@ export function createOpenAICodexAdapter(
 
   return new OpenAICodexAdapter({
     profiles: currentProfiles,
-    resolveApiKey: async () => {
-      const operation = async () => (await readOpenAICodexRequestAuth(credentials)).access
-      return proxyManager?.run(resolveProxyUrl?.(), operation) ?? operation()
-    },
+    resolveApiKey: async () => (await readOpenAICodexRequestAuth(credentials)).access,
     auth: { credentials: new InMemoryCredentialStore(), authContext: defaultProviderAuthContext() },
     resolveAttachments,
   })

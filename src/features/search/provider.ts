@@ -14,7 +14,6 @@ import type {
 } from '@deepseek-ai/dsh-web'
 import type { OpenAICodexCredentialStore } from '../../platform/auth/store.ts'
 import { OPENAI_CODEX_PROVIDER } from '../../platform/auth/store.ts'
-import type { OpenAICodexProxyManager } from '../../platform/http/proxy-manager.ts'
 import type { OpenAICodexBackendRequests } from '../../platform/http/backend-request.ts'
 import { prepareOpenAICodexBackendHeaders } from '../../platform/http/backend-policy.ts'
 import {
@@ -88,11 +87,7 @@ export interface OpenAICodexSearchProviderOptions {
   readonly maxOutputTokens: number
   /** Resolve the request identity, normally the initiating session id. */
   readonly resolveRequestId: () => string
-  /** Owns the request-scoped dispatcher when a custom proxy is active. */
-  readonly proxyManager?: OpenAICodexProxyManager
-  /** Resolve the active proxy for each search request. */
-  readonly resolveProxyUrl?: () => string | undefined
-  /** Shared runtime request governor; preferred over the legacy proxy-only path. */
+  /** Shared runtime request governor. */
   readonly backendRequests?: OpenAICodexBackendRequests
   /** Record the exact secret-free request before dispatch. */
   readonly recordRequest?: (request: OpenAICodexSearchRequestRecord) => void
@@ -276,7 +271,7 @@ export class OpenAICodexSearchProvider implements WebSearchProvider {
     if (this.options.backendRequests !== undefined) {
       return this.options.backendRequests.run(
         { lane: 'search', signal, timeoutMs: OPENAI_CODEX_SEARCH_TIMEOUT_MS },
-        context => this.searchWithoutProxy(request, context.signal, context.fetch),
+        context => this.executeSearch(request, context.signal, context.fetch),
       ).catch((error: unknown) => {
         if (signal?.aborted || (error instanceof DOMException && ['AbortError', 'TimeoutError'].includes(error.name))) {
           throw searchAborted(signal, error)
@@ -288,12 +283,11 @@ export class OpenAICodexSearchProvider implements WebSearchProvider {
     const combined = signal === undefined ? deadline.signal : AbortSignal.any([signal, deadline.signal])
     const timer = setTimeout(() => { deadline.abort(new DOMException('Search deadline exceeded', 'TimeoutError')) }, OPENAI_CODEX_SEARCH_TIMEOUT_MS)
     try {
-      const operation = () => this.searchWithoutProxy(request, combined)
-      return await (this.options.proxyManager?.run(this.options.resolveProxyUrl?.(), operation) ?? operation())
+      return await this.executeSearch(request, combined)
     } finally { clearTimeout(timer) }
   }
 
-  private async searchWithoutProxy(
+  private async executeSearch(
     request: WebSearchRequest,
     signal?: AbortSignal,
     requestFetch: typeof globalThis.fetch = globalThis.fetch,

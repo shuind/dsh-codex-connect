@@ -2,7 +2,6 @@
 
 import type { AuthEvent, AuthPrompt } from '@earendil-works/pi-ai'
 import { publicAuthError as safeMessage } from '../../shared/auth.ts'
-import type { OpenAICodexProxyManager } from '../../platform/http/proxy-manager.ts'
 import {
   isOpenAICodexReauthRequiredError,
   OPENAI_CODEX_REAUTH_REQUIRED_MESSAGE,
@@ -39,8 +38,6 @@ interface PendingManualPrompt {
 export interface OpenAICodexWebAuthOptions {
   challengeTimeoutMs?: number
   authorizationTimeoutMs?: number | undefined
-  proxyManager?: OpenAICodexProxyManager | undefined
-  resolveProxyUrl?: (() => string | undefined) | undefined
   quotaState?: OpenAICodexQuotaState | undefined
 }
 
@@ -88,8 +85,6 @@ export class OpenAICodexWebAuth {
   private manualPromptClosed = false
   private readonly challengeTimeoutMs: number
   private readonly authorizationTimeoutMs: number
-  private readonly proxyManager: OpenAICodexProxyManager | undefined
-  private readonly resolveProxyUrl: () => string | undefined
   private readonly quotaState: OpenAICodexQuotaState | undefined
 
   constructor(
@@ -98,8 +93,6 @@ export class OpenAICodexWebAuth {
   ) {
     this.challengeTimeoutMs = options.challengeTimeoutMs ?? OPENAI_CODEX_AUTH_URL_TIMEOUT_MS
     this.authorizationTimeoutMs = options.authorizationTimeoutMs ?? OPENAI_CODEX_AUTHORIZATION_TIMEOUT_MS
-    this.proxyManager = options.proxyManager
-    this.resolveProxyUrl = options.resolveProxyUrl ?? (() => undefined)
     this.quotaState = options.quotaState
     if (!Number.isFinite(this.challengeTimeoutMs) || this.challengeTimeoutMs <= 0) {
       throw new TypeError('OpenAI Codex auth URL timeout must be a positive finite number')
@@ -245,7 +238,7 @@ export class OpenAICodexWebAuth {
         if (this.cancellation === cancellation && !cancellation.signal.aborted) this.onEvent(event)
       },
     }, this.store)
-    this.operation = (this.proxyManager?.run(this.resolveProxyUrl(), login) ?? login()).then(
+    this.operation = login().then(
       async () => {
         this.quotaState?.invalidate()
         this.manualPromptClosed = true
@@ -297,11 +290,10 @@ export class OpenAICodexWebAuth {
     const stored = await openAICodexAuthStatus(credentials)
     if (!stored.authenticated) return { status: 'signed-out' }
     try {
-      const readUsage = () => readOpenAICodexRateLimits(credentials)
       return {
         status: 'signed-in',
         usage: this.quotaState === undefined
-          ? await (this.proxyManager?.run(this.resolveProxyUrl(), readUsage) ?? readUsage())
+          ? await readOpenAICodexRateLimits(credentials)
           : (await this.quotaState.read(credentials)).usage,
       }
     } catch (error: unknown) {

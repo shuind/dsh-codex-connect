@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
-  DEFAULT_OPENAI_CODEX_PROXY_URL,
   DEFAULT_OPENAI_CODEX_SETTINGS,
   decodeOpenAICodexSettings,
   isValidOpenAICodexImageModelHint,
   isValidOpenAICodexContextWindowOverrides,
-  resolveOpenAICodexProxyUrl,
   resolveOpenAICodexSettings,
 } from '../../src/shared/settings.ts'
 import { Config } from '../../src/index.ts'
@@ -37,12 +35,10 @@ describe('OpenAI Codex proxy settings contract', () => {
     expect(decodeOpenAICodexSettings({ ...DEFAULT_OPENAI_CODEX_SETTINGS, imageModelHint: 'bad value' })).toBeUndefined()
   })
 
-  it('keeps fresh and legacy settings on direct connection', () => {
-    expect(DEFAULT_OPENAI_CODEX_SETTINGS.enableProxy).toBe(false)
+  it('defaults optional capabilities off for fresh and legacy settings', () => {
     expect(DEFAULT_OPENAI_CODEX_SETTINGS.enableNewSessionFastMode).toBe(false)
     expect(DEFAULT_OPENAI_CODEX_SETTINGS.enableNewSubagentFastMode).toBe(false)
     expect(DEFAULT_OPENAI_CODEX_SETTINGS.enableNativeCompaction).toBe(false)
-    expect(DEFAULT_OPENAI_CODEX_SETTINGS.proxyUrl).toBe(DEFAULT_OPENAI_CODEX_PROXY_URL)
     const legacy = decodeOpenAICodexSettings({
       enableSearch: false,
       newSessionSpeedMode: 'ultrafast',
@@ -51,13 +47,10 @@ describe('OpenAI Codex proxy settings contract', () => {
       searchContextSize: 'medium',
       searchMaxOutputTokens: 10_000,
     })
-    expect(legacy?.enableProxy).toBe(false)
     expect(legacy?.newSessionSpeedMode).toBe('fast')
     expect(legacy?.enableNewSessionFastMode).toBe(false)
     expect(legacy?.enableNewSubagentFastMode).toBe(false)
     expect(legacy?.enableNativeCompaction).toBe(false)
-    expect(legacy?.proxyUrl).toBe(DEFAULT_OPENAI_CODEX_PROXY_URL)
-    expect(resolveOpenAICodexProxyUrl(legacy ?? {})).toBeUndefined()
   })
 
   it('keeps top-level and subagent Fast Mode defaults separate and rejects malformed values', () => {
@@ -77,21 +70,6 @@ describe('OpenAI Codex proxy settings contract', () => {
       expect(() => resolveOpenAICodexSettings({ [field]: 'on' } as never)).toThrow()
       expect(decodeOpenAICodexSettings({ ...DEFAULT_OPENAI_CODEX_SETTINGS, [field]: 'on' })).toBeUndefined()
     }
-  })
-
-  it('rejects unsafe active proxy values while preserving explicit activation semantics', () => {
-    expect(decodeOpenAICodexSettings({
-      enableProxy: true,
-      proxyUrl: 'http://user:password@127.0.0.1:7890',
-      enableSearch: false,
-      enableImageTool: false,
-      searchModel: 'gpt-5.6-sol',
-      searchMode: 'cached',
-      searchContextSize: 'medium',
-      searchMaxOutputTokens: 10_000,
-    })).toBeUndefined()
-    expect(resolveOpenAICodexProxyUrl({ enableProxy: true, proxyUrl: 'http://127.0.0.1:7890' }))
-      .toBe('http://127.0.0.1:7890')
   })
 
   it('defaults context-window overrides to undefined', () => {

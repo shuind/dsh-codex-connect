@@ -78,10 +78,7 @@ export function OpenAICodexSettings({ t, configScope, updater, account, embedded
   const label = accountStatusLabel(status.status, t)
   const config = configSnapshot.value
   const enabledCapabilities = config === undefined ? 0 : [
-    config.enableProxy,
     config.enableSearch,
-    (config.newSessionSpeedMode ?? (config.enableNewSessionFastMode ? 'fast' : 'standard')) !== 'standard',
-    (config.newSubagentSpeedMode ?? (config.enableNewSubagentFastMode ? 'fast' : 'standard')) !== 'standard',
     config.enableNativeCompaction,
     config.enableImageGeneration,
   ].filter(Boolean).length

@@ -87,7 +87,7 @@ describe('Codex Connect Host configuration form', () => {
     publish({ ...DEFAULT_OPENAI_CODEX_SETTINGS })
     const accepted = scope.getSnapshot()
     expect(accepted).toMatchObject({ status: 'ready', revision: 7, writable: true })
-    expect(accepted.value).toMatchObject({ enableProxy: false, searchModel: 'gpt-5.6-sol' })
+    expect(accepted.value).toMatchObject({ enableSearch: false, searchModel: 'gpt-5.6-sol' })
     expect(scope.getSnapshot()).toBe(accepted)
     await expect(scope.mutate([{ op: 'set', path: ['enableSearch'], value: true }], 7)).resolves.toBe(true)
     expect(mutate).toHaveBeenCalledWith([{ op: 'set', path: ['enableSearch'], value: true }], 7)

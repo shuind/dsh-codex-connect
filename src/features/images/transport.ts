@@ -9,7 +9,6 @@ import {
 } from '../../shared/auth.ts'
 import type { OpenAICodexCredentialStore } from '../../platform/auth/store.ts'
 import { OPENAI_CODEX_PROVIDER } from '../../platform/auth/store.ts'
-import type { OpenAICodexProxyManager } from '../../platform/http/proxy-manager.ts'
 import type { OpenAICodexBackendRequests } from '../../platform/http/backend-request.ts'
 import { prepareOpenAICodexBackendHeaders } from '../../platform/http/backend-policy.ts'
 import { readRetryAfterMs } from '../../platform/http/backend-policy.ts'
@@ -252,8 +251,6 @@ export class OpenAICodexTransport extends Service implements OpenAICodexTranspor
   constructor(
     ctx: Context,
     private readonly credentials: OpenAICodexCredentialStore,
-    private readonly proxyManager?: OpenAICodexProxyManager,
-    private readonly resolveProxyUrl: () => string | undefined = () => undefined,
     private readonly resolveImageModelHint: () => string = () => DEFAULT_OPENAI_CODEX_IMAGE_MODEL_HINT,
     private readonly backendRequests?: OpenAICodexBackendRequests,
   ) {
@@ -292,7 +289,7 @@ export class OpenAICodexTransport extends Service implements OpenAICodexTranspor
       try {
         return await this.backendRequests.run(
           { lane: 'image', signal: context.signal, timeoutMs: OPENAI_CODEX_IMAGE_REQUEST_TIMEOUT_MS },
-          request => this.generateImagesWithoutProxy(input, { signal: request.signal }, request.fetch, images),
+          request => this.executeImageRequest(input, { signal: request.signal }, request.fetch, images),
         )
       } catch (error: unknown) {
         if (isOpenAICodexTransportError(error)) throw error
@@ -303,11 +300,10 @@ export class OpenAICodexTransport extends Service implements OpenAICodexTranspor
         throw new OpenAICodexTransportError(OPENAI_CODEX_TRANSPORT_ERROR_CODES.networkError)
       }
     }
-    const operation = () => this.generateImagesWithoutProxy(input, context, globalThis.fetch, images)
-    return this.proxyManager?.run(this.resolveProxyUrl(), operation) ?? operation()
+    return this.executeImageRequest(input, context, globalThis.fetch, images)
   }
 
-  private async generateImagesWithoutProxy(
+  private async executeImageRequest(
     input: ImageGenerationRequest,
     context: ImageRequestContext,
     requestFetch: typeof globalThis.fetch = globalThis.fetch,

@@ -2,7 +2,6 @@
 import { createHash } from 'node:crypto'
 import { readOpenAICodexRequestAuth } from '../../platform/auth/oauth-client.ts'
 import { OpenAICodexRequestAuthError } from '../../shared/auth.ts'
-import type { OpenAICodexProxyManager } from '../../platform/http/proxy-manager.ts'
 import type { OpenAICodexBackendRequests } from '../../platform/http/backend-request.ts'
 import type { OpenAICodexCredentialStore } from '../../platform/auth/store.ts'
 import { OpenAICodexReauthRequiredError, OpenAICodexUsageHttpError, parseOpenAICodexUsage, readOpenAICodexUsageResponse, type OpenAICodexUsage } from './usage.ts'
@@ -59,14 +58,11 @@ export class OpenAICodexQuotaState {
   private readonly cache = new Map<string, Entry>()
   private readonly operations = new Set<Promise<OpenAICodexQuotaSnapshot>>()
   private epoch = new AbortController()
-  private configuration: string | undefined
   private disposed = false
   private disposal: Promise<void> | undefined
 
   constructor(private readonly options: {
     credentials: OpenAICodexCredentialStore
-    proxyManager: OpenAICodexProxyManager
-    resolveProxyUrl: () => string | undefined
     backendRequests?: OpenAICodexBackendRequests | undefined
   }) {}
 
@@ -85,12 +81,8 @@ export class OpenAICodexQuotaState {
   private readSnapshot(snapshot: Pick<OpenAICodexCredentialStore, 'captureActiveAccount'> | undefined, signal: AbortSignal | undefined): Promise<OpenAICodexQuotaSnapshot> {
     if (this.disposed) return Promise.reject(new Error('OpenAI Codex quota state has been disposed'))
     if (signal?.aborted) return Promise.reject(new DOMException('The operation was aborted', 'AbortError'))
-    const proxy = this.options.resolveProxyUrl()
-    const configuration = JSON.stringify([proxy])
-    if (this.configuration !== undefined && this.configuration !== configuration) this.invalidate()
-    this.configuration = configuration
     const epoch = this.epoch.signal
-    const operation = this.readInternal(snapshot ?? this.options.credentials, proxy, epoch).catch((error: unknown) => {
+    const operation = this.readInternal(snapshot ?? this.options.credentials, epoch).catch((error: unknown) => {
       epoch.throwIfAborted()
       throw safeFailure(error)
     })
@@ -100,12 +92,12 @@ export class OpenAICodexQuotaState {
   }
 
   private async readInternal(credentials: Pick<OpenAICodexCredentialStore, 'captureActiveAccount'>,
-    proxy: string | undefined, epoch: AbortSignal): Promise<OpenAICodexQuotaSnapshot> {
-    const auth = await this.options.proxyManager.run(proxy, () => readOpenAICodexRequestAuth(credentials, epoch))
+    epoch: AbortSignal): Promise<OpenAICodexQuotaSnapshot> {
+    const auth = await readOpenAICodexRequestAuth(credentials, epoch)
     epoch.throwIfAborted()
     const fetch = async (authoritySignal = epoch): Promise<OpenAICodexQuotaSnapshot> => {
       const value = this.options.backendRequests === undefined
-        ? await this.options.proxyManager.run(proxy, () => readOpenAICodexUsageResponse(auth, authoritySignal))
+        ? await readOpenAICodexUsageResponse(auth, authoritySignal)
         : await this.options.backendRequests.run(
             { lane: 'quota', signal: authoritySignal, timeoutMs: 15_000 },
             context => readOpenAICodexUsageResponse(auth, context.signal, context.fetch),

@@ -71,7 +71,7 @@ async function transport(
   let service: OpenAICodexTransport | undefined
   await ctx.plugin((pluginCtx) => {
     service = new OpenAICodexTransport(
-      pluginCtx, store, undefined, undefined,
+      pluginCtx, store,
       typeof imageModelHint === 'function' ? imageModelHint : () => imageModelHint,
       backendRequests,
     )
