@@ -1,155 +1,73 @@
-# Codex Connect
+# @shuind/dsh-codex-connect
 
-Use your ChatGPT subscription as an `openai-codex` model provider in DeepSeek Harness. Codex Connect is a community Alpha plugin.
+给 DeepSeek Harness（DSH）用的 ChatGPT OAuth / Codex 模型提供方插件：免 API Key 使用 ChatGPT 订阅接入 `openai-codex` 模型，支持多账号切换、配额查看、速度模式、独立作用域代理，以及按需开启的原生上下文压缩、GPT Image 生图/改图、`view_image` 和联网搜索。
 
-English | [中文](docs/README.zh.md)
+本仓库是从上游 `dsh-codex-connect` fork 并精简重构后的独立维护版本，移除了已废弃或过重的实验模块，按 `shared / platform / features / client` 分层维护。
 
-## Quick start
+当前版本 `0.2.0` 适配 **DeepSeek Harness `0.2.2-rc.1`–`0.2.2-rc.5`**（`engines.dsh: >=0.2.2-rc.1 <=0.2.2-rc.5`，已在 `0.2.2-rc.5` 上完整验证）。
 
-### 1. Install
+## 安装
 
-Run `dsh --version` first. For DSH `0.2.2-rc.1`, install into your Web profile:
+### 从插件市场 / npm 安装
 
-```sh
-dsh plugin --profile web add dsh-codex-connect@0.2.0-alpha.15
-dsh web
-```
+在 Harness 的 **插件 → 添加插件** 中输入 `@shuind/dsh-codex-connect`（或指定 `@shuind/dsh-codex-connect@0.2.0`），安装后按提示重启 Harness 即可。
 
-| Requirement | Verified default pairing |
-| --- | --- |
-| DeepSeek Harness | `0.2.2-rc.1` (DSH npm `latest` on 2026-11-17, with a consistent host package set) |
-| Codex Connect | `0.2.0-alpha.15` (npm `latest` and `alpha` on 2026-11-17) |
-| Node.js | `^22.19.0 \|\| >=24.0.0` |
-| Account | ChatGPT OAuth with access to the selected Codex model |
-
-On this exact DSH version, `dsh-codex-connect@latest` resolved to Alpha 15 and passed isolated installation and keyless startup checks. For reproducible installs, use the exact version above. Check the full table before installing on another DSH version or in Desktop. [Installation and upgrades](INSTALL.md) · [Alpha 15 release and promotion record](docs/release-notes/0.2.0-alpha.15.md#latest-promotion-on-2026-11-17)
-
-Replace `web` with your existing profile name and start Harness with that same profile. From a DSH source checkout, prefix the commands with `pnpm`.
-
-### 2. Authorize and select a model
-
-Open **Settings → Models → Openai-Codex → Authorize**, then complete approval yourself in the browser. If an embedded window is blocked, select **Open ChatGPT sign-in page**. Choose an `openai-codex` model in the normal Harness model picker.
-
-Never paste an authorization URL, code, token, or account identifier into an issue, log, chat, or configuration file. For a browser on another device, the optional manual callback form can complete the pending login without forwarding the localhost callback port; follow [Remote browser authorization](docs/reference.md#remote-browser-authorization).
-
-### 3. Check the installation
-
-For a package-manager-free diagnostic, run the already installed bin directly (replace these independently identified paths):
+也可以在 Web profile 下通过 CLI 安装：
 
 ```sh
-node /absolute/profile/node_modules/dsh-codex-connect/lib/bin.js doctor --json \
-  --install-anchor /absolute/dsh/node_modules/@deepseek-ai/dsh/package.json
+dsh plugin --profile web add @shuind/dsh-codex-connect
 ```
 
-`doctor --json` reports local installation metadata without a network request or raw credentials; an anchor does not prove that installation is running. Wrappers such as `dsh plugin exec` may reconcile dependencies. See [runtime identity and direct diagnostics](docs/runtime-identity.md), including Desktop/ASAR limitations. Development builds containing that change also distinguish page, Host-loaded and installed plugin versions in settings. A passing diagnostic is not proof of model access; an actual request requires separate authorization.
+### 从离线包安装（GitHub Release）
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/franksong2702/dsh-codex-connect/main/docs/assets/en/hero.jpg" alt="Codex Connect — ChatGPT OAuth for DeepSeek Harness" width="100%">
-</p>
+1. 在 [Releases](https://github.com/shuind/dsh-codex-connect/releases) 页面下载对应版本的 `.tgz` 安装包（如 `shuind-dsh-codex-connect-0.2.0.tgz`）。
+2. 打开 Harness 桌面端的 **插件 → 添加插件**，填入该 `.tgz` 文件的本地路径确认安装，然后重启 Harness。
 
-## Core capabilities
+> 桌面端请直接在软件内的插件页面安装或升级，不要用命令行里可能存在的旧版 `dsh` 去改桌面端的 `desktop` profile。
 
-Codex Connect supplies the provider. Harness manages tools, permissions, approvals, attachments, sessions, compaction and recovery. Installing the plugin preserves your default model and search route. The plugin is independent of OpenAI and DeepSeek, and uses ChatGPT OAuth rather than an OpenAI Platform API key.
+### 授权登录
 
-- **Accounts:** save up to 16 accounts on the DSH host and manually select the active account for subsequent requests. Account selection is not a per-session binding. Requests keep their captured account; the plugin does not rotate accounts or silently fail over.
-- **Models and Astra support:** the currently verified DSH and plugin combination supports `gpt-6-astra`. The plugin supplies its missing model definition with Low, Medium, High, Xhigh, and Max reasoning levels; Default preserves the provider default. Saved Off/Minimal selections require an [explicit update](MIGRATION.md#astra-reasoning-selections). When the installed dependency catalog includes Astra, the plugin preserves its native metadata while retaining these five calibrated reasoning choices. A model appearing in the list does not mean the current account has permission to use it; overall compatibility with new dependency versions still requires separate verification.
-- **Fast Mode:** request priority service for one conversation, off by default. Optional, separate profile settings can enable it for newly started top-level or subagent conversations without changing existing conversations. Actual speed and quota consumption depend on the service; no fixed speed multiplier is guaranteed.
-- **Quota:** show the server-returned `5h` and `7d` windows and reset times, normally refreshed every 60 seconds while signed in and the tab is visible; failures back off. Missing windows are not invented; Spark uses its separate quota bucket.
-- **Plugin updates:** check for newer Codex Connect releases without installing anything or recommending changes to DSH. Host compatibility is available through explicit local diagnostics.
+1. 打开 **设置 → 模型 → Openai-Codex → 授权**（或 **设置 → 插件 → Codex Connect**），在浏览器中完成 ChatGPT 登录。
+2. 远程浏览器无法直连 `localhost` 回调端口时，可展开页面中的回调 URL 表单粘贴完整跳转地址完成授权；也可以在主机终端运行 `dsh-codex-connect login`。
+3. OAuth 凭据独立保存在 `$DSH_HOME/.openai-codex-auth.json`，不会读写 `~/.codex/auth.json`；安装插件不会改动原有默认模型或搜索路由。
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/franksong2702/dsh-codex-connect/main/docs/assets/composer-capabilities.jpg" alt="Fast Mode and quota controls in the DeepSeek Harness Composer" width="820">
-</p>
+## 功能概览
 
-## Optional capabilities
+- **多账号与实时配额**：
+  - 支持在主机上保存最多 16 个 ChatGPT 账号并手动切换当前账号；账号变更只作用于后续新请求，不影响进行中的回合。
+  - 在设置页与输入框右侧实时展示 `5h` / `7d` 额度窗口及重置时间。
+- **模型目录、上下文预算与推理强度**：
+  - 内置 Codex 模型目录（含 `gpt-6-astra`、`gpt-6-sol`、`gpt-6-luna`、`gpt-6.1-sol` 等），可在设置页勾选模型选择器中显示的模型。
+  - 支持按单个模型覆写客户端上下文预算（隐藏模型仍保留其配置），以及设置默认推理强度（`low` / `medium` / `high` / `xhigh` / `max`）。
+- **会话速度控制（Standard / Fast / Ultrafast）**：
+  - 输入框右侧可直接切换当前对话的速度档位；设置页支持分别配置新建主对话与新建子代理的默认速度。
+- **独立作用域 HTTP(S) 代理**：
+  - 默认直连；需要时可在网络页一键扫描常见本机代理端口，或手动输入并探测代理地址。
+  - 代理仅作用于 Codex Connect 自身流量，不影响宿主及其他插件的请求，代理失败也不会静默回退直连。
+- **按需开启的可选能力（默认全部关闭）**：
+  - **Codex 原生上下文管理（`enableNativeCompaction`）**：长对话达到上下文阈值时使用 Codex 原生压缩并保存加密 checkpoint，不可用时自动回退到 Harness 常规摘要。
+  - **GPT Image 生图与改图（`enableImageGeneration`）**：无需切换聊天模型（使用 DeepSeek 等模型时也能直接调用），对话尾部直接展示生成结果，支持选图句柄多轮修改与原图下载。
+  - **图片查看（`enableImageTool`）**：注册 `view_image` 工具，支持审批后的本地图片读取与公网图片获取。
+  - **Codex 联网搜索（`enableSearch`）**：启用期间临时接管当前 profile 的 Web 搜索路由，停用后自动恢复原路由。
+  - **只读配额工具（`enableQuotaTool`）**：配置开启并重载后暴露 `codex_connect_quota`，供模型只读查询共享配额窗口。
+- **轻量更新提醒与 CLI 工具**：
+  - 优先查询 npm（`@shuind/dsh-codex-connect`），查不到时回退 GitHub Releases；发现新版本仅在顶部提示一行，同一版本只提醒一次。
+  - 提供独立 CLI：`dsh-codex-connect <doctor|login|logout|status|trust-origin|trusted-origins|untrust-origin>`。
 
-Development now follows the [core maintenance scope](docs/maintenance-scope.md): maintain connection, compatibility, diagnostics and recovery; freeze Task orchestration and unproven optimization work. Existing published options are not removed or remotely disabled by this decision.
+## 与 dsh-codex-harness 配合
 
-Alpha 4.40 also supplies `gpt-6-sol` and `gpt-6-luna` when older provider catalogs omit them, retaining native metadata when present. Both expose Low through Max (including Xhigh); Default omits an explicit effort. Codex Sol's Ultra orchestration mode is not implemented. New task grants can explicitly include these models, but existing grants and GPT-5.6 Sol/Medium startup remain unchanged; Luna Reserve has subsequently been removed. A catalog entry is not proof of account access. See [compatibility scope and validation](docs/experiments/gpt6-sol-luna-compatibility.md).
+本插件保持独立插件形态，与 [@shuind/dsh-codex-harness](https://github.com/shuind/dsh-codex-harness) 直接配合使用：
 
-All options below are off on a fresh installation. Edit them in **Settings → Plugins → Plugin configuration → Codex Connect** or **Settings → Models → Openai-Codex → More settings**, then select **Save changes**. A conflict or failed save preserves your draft.
+- `dsh-codex-harness` 会自动识别 `openai-codex` 提供方，将模型目录、逐模型上下文上限、`Fast` 档位、联网搜索和原生压缩交由本插件处理，无需额外配置。
+- 输入框右下角的上下文容量按钮与 `dsh-codex-connect` 的逐模型预算设置直接联动。
 
-| Capability | Enable with | Important behavior |
-|---|---|---|
-| Proxy | `enableProxy` | Credential-free HTTP(S), scoped to this plugin's traffic, including compressed OAuth and quota responses. Unrelated Fetch calls retain the host's original transport. A failed proxy request does not silently retry directly. |
-| Codex Search | `enableSearch` | Selects Codex for the entire profile's search route; disabling restores the previously active route. |
-| Image viewing | `enableImageTool` | Adds `view_image` to vision-capable models for local files and validated public HTTP(S) images. |
-| GPT Image generation and editing | `enableImageGeneration` | Generate from a prompt or edit selected conversation images with ordered references. Availability, dimensions, and quota remain account- and service-controlled. Also gates the cross-route image handle bridge, which persists the Codex Connect image selection handles into image tool results on non-Codex routes so image editing works there too; the `openai-codex` route is skipped because its adapter already injects the same handles per request. Optional `imageHandleBridgeTools` restricts the bridge to specific tools. |
-| Auto-review | `enableAutoReview` | Sends bounded approval context, tool arguments, working directory, and the planned action to `chatgpt.com`, with confirmation on first enablement. Failures return to human approval. |
+## 更多说明
 
-**Luna Reserve has been removed.** Legacy `enableReserveFallback` settings are ignored; no Reserve negotiation or automatic model switching remains. Select an ordinary model explicitly for an old `gpt-reserve` conversation. If the Host cannot change that conversation’s model, preserve it and start a new conversation with the model you choose. Old return files are not read, migrated or deleted. Account quota UI and the read-only quota tool retain ordinary 60-second caching and failure cooldowns, with no background polling. See [migration guidance](docs/reference.md#luna-reserve-fallback).
+- 安装、升级与离线部署：[INSTALL.md](INSTALL.md)
+- 配置项、远程授权与故障排查：[docs/reference.zh.md](docs/reference.zh.md) / [docs/reference.md](docs/reference.md)
+- 架构与边界设计：[docs/design.zh.md](docs/design.zh.md) / [docs/design.md](docs/design.md)
+- 版本兼容与迁移：[MIGRATION.md](MIGRATION.md) · [VERSIONING.md](VERSIONING.md)
 
-Use the image generation capability included with your current GPT subscription. Successful images appear below the conversation answer without opening its processing details; the original tool card remains available there. Generated originals are stored separately from attachment previews; disabling the capability or uninstalling the plugin does not delete them. See [Configuration and recovery](docs/reference.md#search-and-image-tools) for storage and access rules.
+## License
 
-Auto-review operates after Harness policy requires approval; it does not bypass that policy. See [Auto-review behavior](docs/auto-review.md) before enabling it.
-
-**Optional model quota observation:** profile composition can set `enableQuotaTool: true` and reload the plugin to expose the read-only `codex_connect_quota` tool. It is off by default and has no custom settings-card toggle. It reports shared Codex window percentages, reset times and freshness, excluding balances and account identifiers. See [quota observation](docs/quota-tool.md) and the optional [skill example](docs/skills/codex-quota-awareness/SKILL.md). Percentages are not task budgets; resource limits never justify dropping requirements, tests or safety checks.
-
-## FAQ and important limits
-
-### Where are my credentials stored?
-
-OAuth credentials are stored on the host running DSH and used there to authenticate and send requests to OpenAI. Normal browser account responses return account summaries, not raw tokens. A remote browser device is not necessarily the DSH host.
-
-### Does uninstalling sign me out?
-
-No. OAuth state is stored separately at `$DSH_HOME/.openai-codex-auth.json` (`~/.dsh` by default). The plugin does not copy or modify `~/.codex/auth.json`. Use **Sign out all accounts**, or `logout` before uninstalling, only when deleting credentials is intentional.
-
-### Can I switch accounts for different conversations?
-
-Subsequent Codex requests use the selected active account; conversations do not bind their own accounts. Fast Mode is conversation-scoped. Cancelling a new authorization preserves existing accounts; an explicit revoked-refresh response asks for reauthorization, while temporary failures preserve the account for retry. See [Account behavior](docs/reference.md#accounts-models-and-quota).
-
-### Why does a listed model fail?
-
-Model HTTP/SSE failures include bounded, request-local diagnostic metadata after the existing error message. An `overloaded` message alone does not establish an account block. See [persistent-error diagnostics](docs/experiments/issue-219-diagnostics.md) for scope and reproduction.
-
-Account permissions, plugin/host compatibility, and network conditions all affect availability. Access on another client does not guarantee this integration will work. OpenAI controls model access, quota, context capacity, and service behavior; catalog entries are not proof of entitlement.
-
-### Does changing client headers prevent persistent authorization failures?
-
-No such guarantee is established. Codex Connect is a third-party integration; it does not impersonate Codex Desktop or fabricate installation/attestation headers. The pi-ai model/OAuth route and auxiliary routes currently identify themselves differently. OpenAI's [App Server documentation](https://developers.openai.com/codex/app-server/) asks integrations to identify their own client with `clientInfo`; it does not establish acceptance rules for this plugin's direct backend calls. An `overloaded` message is not proof of a block. Capture the bounded error metadata and compare successful and failed windows before attributing the cause; share request IDs privately, never tokens or full session archives.
-
-### Can I keep the original `dsh-codex` plugin installed?
-
-Not in the same effective configuration: both register `openai-codex`. Follow [MIGRATION.md](MIGRATION.md); remove only the confirmed conflicting entry, not credentials or unrelated providers.
-
-### What do diagnostics prove?
-
-`doctor` is local. Capability and reviewer probes may make network requests and consume quota when their preconditions are met. `auto-review-probe` checks only the reviewer route and structured response, not the full Harness approval integration or execution of the reviewed action. Commands, limits, and exit codes are in the [diagnostics reference](docs/reference.md#capability-probes).
-
-A missing entry in [verified-compatibility.json](verified-compatibility.json) means a DSH/plugin combination is unverified, not known to be broken. Do not infer support for newer hosts from an older pairing.
-
-## Documentation and development
-
-- [Installation and upgrades](INSTALL.md)
-- [Release history](docs/release-notes/README.md)
-- [Configuration, diagnostics, and recovery](docs/reference.md)
-- [Local request metrics: enable, report, and disable](docs/request-metrics.md)
-- [Explicit, bounded bili preflight activity (source change; default off)](docs/preflight-activity.md)
-- [Migration from `dsh-codex`](MIGRATION.md)
-- [Architecture and security details](docs/design.md)
-- [Auto-review behavior](docs/auto-review.md)
-- [Release runbook](RELEASING.md), [Contributing](CONTRIBUTING.md), and [Security policy](SECURITY.md)
-
-```sh
-pnpm install --frozen-lockfile
-pnpm run check
-pnpm run test:browser
-pnpm run check:dsh-install
-```
-
-`check` covers static checks, unit tests, build, compatibility, and packaging. `lint:metadata` checks package and release rules; `lint:source` checks host and browser TypeScript for unhandled or misused promises, invalid awaits, duplicate cases, and unreachable code. Browser regression and isolated DSH installation are separate commands. These checks use no real OAuth authorization and do not replace real-account acceptance.
-
-## License and acknowledgements
-
-Copyright 2026 Frank Song for Codex Connect modifications and additional work. This project contains software derived from [Yan-Zero/dsh-codex](https://github.com/Yan-Zero/dsh-codex); Copyright 2026 Yan-Zero is retained for upstream material. Both are distributed under Apache-2.0; see [NOTICE](NOTICE).
-
-Published `0.2.0-alpha.1` adds `gpt-6.1-sol` to the manual model catalog and configuration selector. It exposes Low, Medium, High, Xhigh and Max; Default omits effort, and Ultra orchestration is unsupported. At that release, the Codex fallback was 272,000 tokens with an optional 872,000 local ceiling, not the API product window or proof of account access. See [metadata and validation](docs/agent-notes/gpt61-sol-support.md). No Adaptive Task grants are expanded.
-
-Alpha 5 capability calibration: the [source comparison](docs/agent-notes/gpt61-capability-calibration.md) distinguishes the pinned 272k fallback/872k local ceiling, official Work/Codex product text advertising 500k surfaced in search results, and separate API limits. That historical change refreshed only Sol61's policy-source pin; then-current defaults, native-provider metadata precedence and Fast/effort behavior were unchanged. No account/endpoint capacity was verified.
-
-Published base-default follow-up for #338: Sol61 now uses a dedicated **500,000-token** base default for its missing entry and known old bundled-static metadata, following the official Work/Codex product default. Explicit provider metadata and user overrides keep precedence; other models, output limits and the 872,000 local override ceiling are unchanged. [Scope and evidence](docs/agent-notes/sol61-context-default.md) distinguish the calibrated default from measured route capacity.
-
-Published in Alpha 11: `gpt-6.1-terra` is available through the manual catalog and configuration selector, with text/image input and existing Responses tools. Its official Codex fallback is 500,000 tokens with an optional 872,000 local ceiling and 128,000 output limit; native provider metadata wins, with the same effort mask as Sol61. Low, Medium, High, Xhigh and Max are exposed; Default omits effort. API `none` is not advertised by the pinned OAuth catalog, and Ultra orchestration is unsupported. This does not add a desktop Computer Use executor or expand Ultrafast eligibility. [Sources, scope and synthetic validation](docs/agent-notes/gpt61-terra-support.md); real-account access remains unverified.
-
-Unpublished source candidate: `gpt-6.2-sol` and `gpt-6.2-astra` are available through the manual catalog and configuration selector, with text/image input and existing Responses tools. Their official Codex fallbacks are respectively 500,000 and 272,000 tokens, with an optional 872,000 local ceiling and 128,000 output limit; native provider metadata wins, with the existing effort mask. Low, Medium, High, Xhigh and Max are exposed; Default omits effort. Ultra orchestration is unsupported, and existing Ultrafast eligibility is unchanged. [Official Codex catalog](https://github.com/openai/codex/blob/6c0cee502d215e5df2dd9a303cf2e252229c9e12/codex-rs/models-manager/models.json); real-account access remains unverified.
+Apache-2.0。保留上游原作者版权声明，详见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。
