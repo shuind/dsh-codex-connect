@@ -28,6 +28,12 @@ dsh plugin --profile web add @shuind/dsh-codex-connect
 2. 远程浏览器无法直连 `localhost` 回调端口时，可展开页面中的回调 URL 表单粘贴完整跳转地址完成授权；也可以在主机终端运行 `dsh-codex-connect login`。
 3. OAuth 凭据独立保存在 `$DSH_HOME/.openai-codex-auth.json`，不会读写 `~/.codex/auth.json`；安装插件不会改动原有默认模型或搜索路由。
 
+## 界面预览
+
+| 模型列表 | 功能设置 |
+| --- | --- |
+| ![模型列表](assets/screenshot-models.png) | ![功能设置](assets/screenshot-settings.png) |
+
 ## 功能概览
 
 - **多账号与实时配额**：
