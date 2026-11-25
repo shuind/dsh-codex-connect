@@ -1,13 +1,17 @@
 /** Lightweight, secret-free local diagnostics and duplicate-provider guidance. */
 
-import { lstat } from 'node:fs/promises'
+import { lstat, readdir, readFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { openAICodexAuthPath, OPENAI_CODEX_PROVIDER } from '../auth/store.ts'
 import { CODEX_CONNECT_VERSION } from '../../version.ts'
 
 export { CODEX_CONNECT_VERSION }
 
+const MAX_PATCH_BYTES = 512 * 1024
+
 export interface OpenAICodexDiagnosticOptions {
   credentialPath?: string
+  dshHome?: string
   providerIds?: readonly string[]
   enableSearch?: boolean
   enableImageGeneration?: boolean
@@ -44,11 +48,43 @@ export function assertNoOpenAICodexProviderConflict(providerIds: readonly string
   if (providerIds.includes(OPENAI_CODEX_PROVIDER)) throw new Error(openAICodexConflictMessage())
 }
 
+function hasLegacyPackagePatchEntry(content: string): boolean {
+  const blocks = content.split(/\r?\n(?=- )/u)
+  return blocks.some(block =>
+    /^\s*-?\s*id:\s*["']?llm-openai-codex["']?\s*$/mu.test(block)
+    && /^\s*-?\s*name:\s*["']?dsh-codex-connect["']?\s*$/mu.test(block))
+}
+
+async function findLegacyProfilePatches(dshHome: string): Promise<string[]> {
+  const profilesDir = join(dshHome, 'profiles')
+  let entries
+  try {
+    entries = await readdir(profilesDir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+  const matches: string[] = []
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const patchPath = join(profilesDir, entry.name, 'cordis.patch.yml')
+    try {
+      const info = await lstat(patchPath)
+      if (!info.isFile() || info.size > MAX_PATCH_BYTES) continue
+      const content = await readFile(patchPath, 'utf8')
+      if (hasLegacyPackagePatchEntry(content)) matches.push(entry.name)
+    } catch {
+      continue
+    }
+  }
+  return matches.sort()
+}
+
 /** Inspect local OAuth file metadata without reading credential contents. */
 export async function diagnoseOpenAICodex(
   options: OpenAICodexDiagnosticOptions = {},
 ): Promise<OpenAICodexDiagnosticReport> {
   const path = options.credentialPath ?? openAICodexAuthPath()
+  const dshHome = options.dshHome ?? dirname(path)
   let state: OpenAICodexDiagnosticReport['credentialFile']['state'] = 'missing'
   let mode: string | undefined
   try {
@@ -66,12 +102,16 @@ export async function diagnoseOpenAICodex(
   }
 
   const providerConflict = options.providerIds?.includes(OPENAI_CODEX_PROVIDER) ?? false
+  const legacyProfiles = await findLegacyProfilePatches(dshHome)
   const hints: string[] = []
   if (state === 'missing') hints.push('Sign in only when you are ready; installation does not start OAuth.')
   if (state === 'permissions-too-broad') hints.push(`Restrict the OAuth file to its owner before use (current mode ${mode}).`)
   if (state === 'not-a-regular-file') hints.push('Replace the OAuth path with an owner-only regular file created by Codex Connect login.')
   if (state === 'unreadable-metadata') hints.push('Harness could not inspect the OAuth file metadata; check the parent directory and file ownership.')
   if (providerConflict) hints.push(openAICodexConflictMessage())
+  for (const profile of legacyProfiles) {
+    hints.push(`Legacy package name "dsh-codex-connect" found for llm-openai-codex in profiles/${profile}/cordis.patch.yml; change name to "@shuind/dsh-codex-connect" (or remove the old entry) and restart DSH.`)
+  }
 
   return {
     package: '@shuind/dsh-codex-connect',

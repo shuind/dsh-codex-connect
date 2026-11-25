@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -52,5 +52,18 @@ describe('Codex Connect doctor', () => {
     expect(failure).toThrow(/legacy dsh-codex bundle or manual openai-codex provider row/)
     await expect(diagnoseOpenAICodex({ credentialPath: join(root!, 'missing.json'), providerIds: ['openai-codex'] }))
       .resolves.toMatchObject({ providerConflict: true })
+  })
+
+  it('detects legacy unscoped dsh-codex-connect entries in profile cordis.patch.yml without leaking absolute paths', async () => {
+    const desktopDir = join(root!, 'profiles', 'desktop')
+    const webDir = join(root!, 'profiles', 'web')
+    await mkdir(desktopDir, { recursive: true })
+    await mkdir(webDir, { recursive: true })
+    await writeFile(join(desktopDir, 'cordis.patch.yml'), '- id: llm-openai-codex\n  name: dsh-codex-connect\n  config:\n    enableSearch: true\n')
+    await writeFile(join(webDir, 'cordis.patch.yml'), '- id: llm-openai-codex\n  name: "@shuind/dsh-codex-connect"\n  config:\n    enableSearch: true\n')
+    const report = await diagnoseOpenAICodex({ credentialPath: join(root!, '.openai-codex-auth.json') })
+    expect(report.hints.some(hint => hint.includes('profiles/desktop/cordis.patch.yml') && hint.includes('@shuind/dsh-codex-connect'))).toBe(true)
+    expect(report.hints.some(hint => hint.includes('profiles/web/cordis.patch.yml'))).toBe(false)
+    expect(report.hints.join('\n')).not.toContain(root!)
   })
 })

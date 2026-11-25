@@ -84,7 +84,7 @@ const buttonStyle: CSSProperties = { display: 'inline-flex', alignItems: 'center
 const linkStyle: CSSProperties = { color: 'var(--dsw-alias-brand-primary)', fontSize: 12, lineHeight: '20px', textDecoration: 'underline', textUnderlineOffset: 2 }
 
 function pluginVersionSummary(current: string, latest: string | undefined, t: OpenAICodexUpdateTranslation): string {
-  if (latest === undefined) return t('compatibilityPluginCurrentOnly', { current })
+  if (latest === undefined) return t('currentVersion', { version: current })
   return current === latest
     ? t('compatibilityPluginSame', { version: current })
     : t('compatibilityPluginDifferent', { current, latest })
@@ -147,7 +147,6 @@ export function OpenAICodexUpdateSettings({ updater, t }: OpenAICodexUpdateSetti
       </div>
       <p style={bodyStyle}>{pluginVersionSummary(snapshot.currentVersion, latestVersion, t)}</p>
       {snapshot.status === 'checking' ? <p style={bodyStyle}>{t('checkingForUpdates')}</p> : null}
-      {snapshot.status === 'unavailable' ? <p style={bodyStyle}>{t('updateCheckUnavailable')}</p> : null}
       {available && snapshot.releaseUrl !== undefined ? (
         <div>
           <a href={snapshot.releaseUrl} target="_blank" rel="noopener noreferrer" style={linkStyle}>

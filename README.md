@@ -23,7 +23,7 @@ dsh plugin --profile web add @shuind/dsh-codex-connect
 1. 在 [Releases](https://github.com/shuind/dsh-codex-connect/releases) 页面下载对应版本的 `.tgz` 安装包（如 `shuind-dsh-codex-connect-0.2.0.tgz`）。
 2. 打开 Harness 桌面端的 **插件 → 添加插件**，填入该 `.tgz` 文件的本地路径确认安装，然后重启 Harness。
 
-> 桌面端请直接在软件内的插件页面安装或升级，不要用命令行里可能存在的旧版 `dsh` 去改桌面端的 `desktop` profile。
+> **从原版 `dsh-codex-connect` 迁移**：若此前安装过无 scope 的 `dsh-codex-connect` 并保存过设置，卸载时 DSH 不会自动清理 profile 的 `cordis.patch.yml`。如换装本包后出现「此 dsh profile 无法使用插件设置」，请打开对应 profile 的 `cordis.patch.yml`，将 `id: llm-openai-codex` 下的 `name: dsh-codex-connect` 改为 `name: "@shuind/dsh-codex-connect"`（或删除该旧条目）后重启 DSH。
 
 ### 授权登录
 
