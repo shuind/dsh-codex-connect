@@ -3,7 +3,6 @@
 import type { OpenAICodexSettingsConfig } from '../../shared/settings.ts'
 import type { OpenAICodexTranslate } from './AccountSection.tsx'
 import {
-  badgeStyle,
   bodyStyle,
   fieldsetStyle,
   formFieldStyle,
@@ -234,10 +233,7 @@ export function CapabilitiesSection({
         <div role="group" aria-labelledby={`${panelPrefix}-native-context-label`} style={{ padding: '2px 0 10px', borderBottom: '0.5px solid var(--dsw-alias-border-l1, var(--dsw-alias-border-l2))' }}>
           <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, cursor: 'pointer' }}>
             <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-              <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-                <span id={`${panelPrefix}-native-context-label`} style={labelStyle}>{t('enableNativeCompaction')}</span>
-                <span style={badgeStyle}>{t('nativeCompactionBadge')}</span>
-              </span>
+              <span id={`${panelPrefix}-native-context-label`} style={labelStyle}>{t('enableNativeCompaction')}</span>
               <span id={`${panelPrefix}-native-context-help`} style={bodyStyle}>{t('enableNativeCompactionHelp')}</span>
             </span>
             <input

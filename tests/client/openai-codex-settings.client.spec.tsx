@@ -383,7 +383,7 @@ describe('OpenAI Codex Plugin configuration card', () => {
     vi.stubGlobal('fetch', vi.fn(async () => json(modelCatalogFixture([{ id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol' }]))))
     render(<OpenAICodexConfiguration scope={scope} t={t} activeModule="capabilities" />)
     fireEvent.click(await screen.findByRole('checkbox', { name: /Enable GPT Image generation/u }))
-    fireEvent.click(screen.getByRole('checkbox', { name: /Enable Codex search provider/u }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /Enable Codex web search/u }))
     fireEvent.click(screen.getByRole('button', { name: en.save }))
     await screen.findByText(en.settingsSaved)
     expect(set).not.toHaveBeenCalled()
@@ -420,7 +420,7 @@ describe('OpenAI Codex Plugin configuration card', () => {
     vi.stubGlobal('fetch', vi.fn(async () => json(modelCatalogFixture([{ id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol' }]))))
     render(<OpenAICodexConfiguration scope={scope} t={t} activeModule="capabilities" />)
     fireEvent.click(await screen.findByRole('checkbox', { name: /Enable GPT Image generation/u }))
-    fireEvent.click(screen.getByRole('checkbox', { name: /Enable Codex search provider/u }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /Enable Codex web search/u }))
     fireEvent.click(screen.getByRole('button', { name: en.save }))
     await screen.findByText(en.settingsSaveFailed)
     expect(scope.getSnapshot().value).toMatchObject({ searchModel: 'remote-model', enableImageGeneration: false, enableSearch: false })
@@ -457,7 +457,7 @@ describe('OpenAI Codex Plugin configuration card', () => {
     expect(screen.getByText('92.8%')).toBeTruthy()
     expect(screen.getByText('92.7%')).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('checkbox', { name: /Enable Codex search provider/u }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /Enable Codex web search/u }))
     const useButtons = screen.getAllByRole('button', { name: en.searchLeaderboardUseModel })
     fireEvent.click(useButtons[0]!)
     expect(screen.getByRole('textbox', { name: en.searchModel })).toHaveProperty('value', 'gpt-6.2-sol')
@@ -512,9 +512,10 @@ describe('OpenAI Codex Plugin configuration card', () => {
     const group = screen.getByRole('group', { name: copy.enableNativeCompaction })
     const native = within(group).getByRole('checkbox', { name: copy.enableNativeCompaction }) as HTMLInputElement
     expect(native.checked).toBe(false)
-    for (const key of ['enableNativeCompactionHelp', 'nativeCompactionBadge', 'nativeCompactionConsent', 'nativeCompactionRisk', 'nativeCompactionSavedOff'] as const) {
+    for (const key of ['enableNativeCompactionHelp', 'nativeCompactionConsent', 'nativeCompactionRisk', 'nativeCompactionSavedOff'] as const) {
       expect(within(group).getByText(copy[key])).toBeTruthy()
     }
+    expect(within(group).queryByText(/实验性|Experimental/u)).toBeNull()
     expect(copy.enableNativeCompaction).toContain('Codex')
     fireEvent.click(within(group).getByText(copy.nativeCompactionDetails))
     expect(within(group).getByText(copy.nativeCompactionHostPolicy)).toBeTruthy()
@@ -563,18 +564,18 @@ describe('OpenAI Codex Plugin configuration card', () => {
 
     render(<OpenAICodexSettings t={t} configScope={scope} embedded />)
     fireEvent.click(screen.getByRole('tab', { name: en.capabilitiesModule }))
-    const enableSearch = await screen.findByRole('checkbox', { name: /Enable Codex search provider/u }) as HTMLInputElement
+    const enableSearch = await screen.findByRole('checkbox', { name: /Enable Codex web search/u }) as HTMLInputElement
     const enableImageGeneration = screen.getByRole('checkbox', { name: /Enable GPT Image generation/u }) as HTMLInputElement
     expect(enableSearch.checked).toBe(false)
     expect(enableImageGeneration.checked).toBe(false)
     expect(screen.queryByRole('textbox', { name: en.searchModel })).toBeNull()
-    expect(screen.queryByRole('textbox', { name: /Image route model hint/u })).toBeNull()
+    expect(screen.queryByRole('textbox', { name: /Image model override/u })).toBeNull()
     expect(screen.queryByRole('button', { name: en.save })).toBeNull()
-    expect(en.enableImageGenerationHelp).toContain('keeping your current chat model, including DeepSeek')
+    expect(en.enableImageGenerationHelp).toContain('without switching models')
     expect(en.enableImageGenerationHelp).toContain('only the selected target and reference images')
     expect(zh.enableImageGeneration).toBe('启用 GPT Image 图片生成')
-    expect(zh.enableImageGenerationHelp).toContain('保持当前聊天模型（包括 DeepSeek）')
-    expect(zh.enableImageGenerationHelp).toContain('仅将本次选定的主图和参考图')
+    expect(zh.enableImageGenerationHelp).toContain('包括 DeepSeek')
+    expect(zh.enableImageGenerationHelp).toContain('仅发送本次选定的目标图与参考图')
 
     fireEvent.click(enableSearch)
     const model = screen.getByRole('textbox', { name: en.searchModel }) as HTMLInputElement
@@ -591,7 +592,7 @@ describe('OpenAI Codex Plugin configuration card', () => {
     fireEvent.change(screen.getByRole('combobox', { name: en.searchMode }), { target: { value: 'live' } })
     fireEvent.change(screen.getByRole('spinbutton', { name: en.searchMaxOutputTokens }), { target: { value: '2048' } })
     fireEvent.click(enableImageGeneration)
-    const imageModelHint = screen.getByRole('textbox', { name: /Image route model hint/u }) as HTMLInputElement
+    const imageModelHint = screen.getByRole('textbox', { name: /Image model override/u }) as HTMLInputElement
     expect(imageModelHint.placeholder).toContain('gpt-image-2')
     fireEvent.change(imageModelHint, { target: { value: 'custom-image-route' } })
     fireEvent.click(screen.getByRole('button', { name: en.save }))
@@ -613,7 +614,7 @@ describe('OpenAI Codex Plugin configuration card', () => {
       imageModelHint: 'existing-route',
     })
     render(<OpenAICodexConfiguration scope={scope} t={t} activeModule="capabilities" />)
-    const hint = await screen.findByRole('textbox', { name: /Image route model hint/u }) as HTMLInputElement
+    const hint = await screen.findByRole('textbox', { name: /Image model override/u }) as HTMLInputElement
     fireEvent.change(hint, { target: { value: 'https://invalid.example' } })
     const save = screen.getByRole('button', { name: en.save }) as HTMLButtonElement
     expect(save.disabled).toBe(true)
