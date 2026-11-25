@@ -42,16 +42,17 @@ const FACTS_SEARCH_V2_ENTRIES = [
 
 const KAGGLE_FACTS_URL = 'https://www.kaggle.com/benchmarks/google/facts'
 
+const DEFAULT_IMAGE_MODEL = 'gpt-image-2.6-flare'
 const CUSTOM_IMAGE_MODEL_VALUE = '__custom__'
 
 const IMAGE_MODEL_PRESETS = [
-  { id: '', labelKey: 'imageModelDefaultOption' },
   { id: 'gpt-image-2.6-flare', labelKey: 'imageModel26Flare' },
   { id: 'gpt-image-2.6-sunburst', labelKey: 'imageModel26Sunburst' },
 ] as const
 
-function isPresetImageModel(value: string): boolean {
-  return IMAGE_MODEL_PRESETS.some(preset => preset.id === value)
+function normalizePresetImageModel(value: string): string | undefined {
+  if (value === '' || value === DEFAULT_IMAGE_MODEL) return DEFAULT_IMAGE_MODEL
+  return IMAGE_MODEL_PRESETS.some(preset => preset.id === value) ? value : undefined
 }
 
 export function CapabilitiesSection({
@@ -67,10 +68,11 @@ export function CapabilitiesSection({
 }: CapabilitiesSectionProps) {
   const activeSearchModel = draft.searchModel.trim()
   const [customInputFor, setCustomInputFor] = useState<string | null>(() => (
-    isPresetImageModel(draft.imageModelHint) ? null : draft.imageModelHint
+    normalizePresetImageModel(draft.imageModelHint) !== undefined ? null : draft.imageModelHint
   ))
-  const showCustomImageModel = !isPresetImageModel(draft.imageModelHint) || customInputFor === draft.imageModelHint
-  const imageModelSelectValue = showCustomImageModel ? CUSTOM_IMAGE_MODEL_VALUE : draft.imageModelHint
+  const normalizedImageModel = normalizePresetImageModel(draft.imageModelHint)
+  const showCustomImageModel = normalizedImageModel === undefined || customInputFor === draft.imageModelHint
+  const imageModelSelectValue = showCustomImageModel ? CUSTOM_IMAGE_MODEL_VALUE : normalizedImageModel
 
   return (
     <div
@@ -309,11 +311,11 @@ export function CapabilitiesSection({
                         return
                       }
                       setCustomInputFor(null)
-                      onUpdate('imageModelHint', next)
+                      onUpdate('imageModelHint', next === DEFAULT_IMAGE_MODEL ? '' : next)
                     }}
                   >
                     {IMAGE_MODEL_PRESETS.map(preset => (
-                      <option key={preset.id || 'default'} value={preset.id}>{t(preset.labelKey)}</option>
+                      <option key={preset.id} value={preset.id}>{t(preset.labelKey)}</option>
                     ))}
                     <option value={CUSTOM_IMAGE_MODEL_VALUE}>{t('imageModelCustomOption')}</option>
                   </select>

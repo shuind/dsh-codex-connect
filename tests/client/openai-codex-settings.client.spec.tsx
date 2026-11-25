@@ -594,14 +594,14 @@ describe('OpenAI Codex Plugin configuration card', () => {
     fireEvent.change(screen.getByRole('spinbutton', { name: en.searchMaxOutputTokens }), { target: { value: '2048' } })
     fireEvent.click(enableImageGeneration)
     const imageModelSelect = screen.getByRole('combobox', { name: en.imageModelHint }) as HTMLSelectElement
-    expect(imageModelSelect.value).toBe('')
+    expect(imageModelSelect.value).toBe('gpt-image-2.6-flare')
     expect(screen.queryByRole('textbox', { name: en.imageModelCustomLabel })).toBeNull()
     fireEvent.change(imageModelSelect, { target: { value: 'gpt-image-2.6-sunburst' } })
     expect(imageModelSelect.value).toBe('gpt-image-2.6-sunburst')
     expect(screen.queryByRole('textbox', { name: en.imageModelCustomLabel })).toBeNull()
     fireEvent.change(imageModelSelect, { target: { value: '__custom__' } })
     const imageModelHint = screen.getByRole('textbox', { name: en.imageModelCustomLabel }) as HTMLInputElement
-    expect(imageModelHint.placeholder).toContain('gpt-image-2')
+    expect(imageModelHint.placeholder).toContain('gpt-image-2.6-flare')
     fireEvent.change(imageModelHint, { target: { value: 'custom-image-route' } })
     fireEvent.click(screen.getByRole('button', { name: en.save }))
 
@@ -635,11 +635,16 @@ describe('OpenAI Codex Plugin configuration card', () => {
     await screen.findByText(en.settingsSaved)
     expect(mutate).toHaveBeenCalledWith(expect.arrayContaining([{ op: 'set', path: ['imageModelHint'], value: '' }]), expect.any(Number))
 
-    fireEvent.change(select, { target: { value: 'gpt-image-2.6-flare' } })
+    fireEvent.change(select, { target: { value: 'gpt-image-2.6-sunburst' } })
     expect(screen.queryByRole('textbox', { name: en.imageModelCustomLabel })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: en.save }))
     await screen.findByText(en.settingsSaved)
-    expect(mutate).toHaveBeenLastCalledWith(expect.arrayContaining([{ op: 'set', path: ['imageModelHint'], value: 'gpt-image-2.6-flare' }]), expect.any(Number))
+    expect(mutate).toHaveBeenLastCalledWith(expect.arrayContaining([{ op: 'set', path: ['imageModelHint'], value: 'gpt-image-2.6-sunburst' }]), expect.any(Number))
+
+    fireEvent.change(select, { target: { value: 'gpt-image-2.6-flare' } })
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    await screen.findByText(en.settingsSaved)
+    expect(mutate).toHaveBeenLastCalledWith(expect.arrayContaining([{ op: 'set', path: ['imageModelHint'], value: '' }]), expect.any(Number))
   })
 
   it('orders models strongest-first, splits enabled and disabled groups, and saves visibility', async () => {

@@ -84,7 +84,6 @@ Fresh installations register the model provider and leave every additional capab
 ```yaml
 - id: llm-openai-codex
   config:
-    enableProxy: false
     enableSearch: false
     enableReserveFallback: false
     enableImageTool: false
@@ -96,9 +95,7 @@ Edit these options under **Settings → Plugins → Plugin configuration → Cod
 
 ### Proxy
 
-Disabling the proxy or unloading the plugin gives active proxy operations one second to finish, then destroys this instance's pools with a further one-second completion limit. New proxy operations are rejected during shutdown; interrupted requests are not retried directly. Arbitrary application callbacks cannot be forcibly terminated by the proxy manager. The scoped dispatcher remains until late callbacks settle, so they cannot bypass their destroyed proxy; unrelated traffic still uses the host dispatcher.
-
-Direct connection is the default. An enabled credential-free HTTP(S) proxy applies only to this plugin's model, OAuth, refresh, quota, search, image, and Auto-review traffic. Detection checks standard proxy environment variables and documented loopback candidates without making a model call, consuming quota, or saving settings. A failed proxy request never silently retries through a direct connection. Loading Codex Connect does not replace Node's environment-proxy dispatcher, so unrelated Harness requests continue using the process's existing proxy policy.
+**Removed.** This fork removes the standalone HTTP(S) proxy subsystem and uses the host network environment directly.
 
 ### Luna Reserve fallback
 
@@ -114,7 +111,7 @@ The shared quota service, account UI and read-only quota tool retain account/cre
 - Search has a 30-second total deadline covering authentication, response headers and body reading. Responses larger than 1 MiB are rejected, and unfinished response bodies are cancelled on failure. Caller cancellation can end a search sooner.
 - `enableImageTool: true` registers `view_image` on vision-capable models. Remote reads accept credential-free public HTTP(S) only and revalidate DNS and redirects.
 - `enableImageGeneration: true` registers GPT Image generation and, in Alpha 4.48 builds, editing of explicitly selected session images. Prompt-only generation remains supported. Availability, dimensions, and quota remain account- and service-controlled.
-- `imageModelHint` is an optional profile-scoped setting in Plugin configuration or the profile config. Empty uses `gpt-image-2`; a custom value accepts 1–128 ASCII letters, digits, dots, underscores, or hyphens and must start with a letter or digit. Saving changes the `model` field of subsequent requests to the fixed generation or edit endpoint; clearing restores the default. Alpha 4.47 accepts only `prompt`; Alpha 4.48 also accepts explicit editing inputs. This is an unverified route hint: the service may ignore or reject it, and it does not guarantee the returned model.
+- `imageModelHint` is an optional profile-scoped setting in Plugin configuration or the profile config. Empty defaults to `gpt-image-2.6-flare`; the settings UI lets you switch between `gpt-image-2.6-flare` and `gpt-image-2.6-sunburst` or enter a custom model slug (1–128 ASCII letters, digits, dots, underscores, or hyphens, starting with a letter or digit). Saving changes the `model` field of subsequent requests to the fixed generation or edit endpoint; clearing restores the default.
 
 Generated originals are stored under `$DSH_HOME/dsh-codex-connect/images/v1`; the conversation receives a separate DSH attachment preview. The result card reports dimensions and file sizes and can download either representation. Originals are owner-only, integrity-checked, and available only to the creating session and forks that inherited the result. Disabling or uninstalling the plugin does not delete those files automatically.
 
@@ -166,8 +163,6 @@ The main plugin options are:
 | Field | Default | Meaning |
 |---|---:|---|
 | `models` | full catalog | Visible Codex model ids; an empty array hides all entries |
-| `enableProxy` | `false` | Use `proxyUrl` for Codex Connect traffic |
-| `proxyUrl` | `http://127.0.0.1:7890` | Credential-free HTTP(S) proxy origin; inactive until enabled |
 | `contextWindowOverrides` | none | Per-model client context-budget overrides |
 | `enableSearch` | `false` | Register Codex search and select it when the setting is saved |
 | `enableReserveFallback` | `false` | Deprecated compatibility field; accepted but ignored after Reserve retirement |

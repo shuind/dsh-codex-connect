@@ -104,7 +104,7 @@ describe('OpenAI Codex image transport', () => {
     const [url, init] = fetchMock.mock.calls[0] ?? []
     expect(url).toBe(OPENAI_CODEX_IMAGE_GENERATION_URL)
     expect(init).toMatchObject({ method: 'POST', redirect: 'manual' })
-    expect(JSON.parse(String(init?.body))).toEqual({ model: 'gpt-image-2', prompt: 'draw a blue square' })
+    expect(JSON.parse(String(init?.body))).toEqual({ model: 'gpt-image-2.6-flare', prompt: 'draw a blue square' })
     expect(Object.keys(JSON.parse(String(init?.body)))).toEqual(['model', 'prompt'])
     const headers = new Headers(init?.headers)
     expect(headers.get('authorization')).toBe('Bearer access-secret')
@@ -137,7 +137,7 @@ describe('OpenAI Codex image transport', () => {
     const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => jsonResponse({ data: [{ b64_json: 'aGVsbG8=' }] }))
     vi.stubGlobal('fetch', fetchMock)
     await (await transport(true, '')).generateImages({ prompt: 'test' }, {})
-    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).model).toBe('gpt-image-2')
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).model).toBe('gpt-image-2.6-flare')
   })
 
   it('captures the hint for an in-flight request and reads the updated hint next time', async () => {

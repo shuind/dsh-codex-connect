@@ -84,7 +84,6 @@ retryPolicy:
 ```yaml
 - id: llm-openai-codex
   config:
-    enableProxy: false
     enableSearch: false
     enableReserveFallback: false
     enableImageTool: false
@@ -96,9 +95,7 @@ retryPolicy:
 
 ### 代理
 
-关闭代理或卸载插件时，先给活动代理操作一秒收尾，再销毁本实例的连接池，最多再等待一秒完成。关闭期间拒绝新的代理操作；被中断的请求不会改走直连重试。代理管理器无法强制终止任意应用回调。作用域 dispatcher 会保留至迟到回调结束，防止它们绕过已销毁的代理；无关流量仍使用宿主 dispatcher。
-
-默认使用直连。启用后，不带凭据的 HTTP(S) proxy 只应用于本插件的模型、OAuth、刷新、额度、搜索、图片和自动审查流量。检测只检查标准代理环境变量和文档列出的 loopback 候选地址，不调用模型、不消耗额度，也不保存设置。代理请求失败时，绝不会静默改走直连。加载 Codex Connect 不会替换 Node 的环境代理 dispatcher，因此其他 Harness 请求会继续使用进程已有的代理策略。
+**已移除。** 本分支移除了独立 HTTP(S) 代理子系统，所有请求直接使用宿主网络环境。
 
 ### Luna Reserve 回退
 
@@ -114,7 +111,7 @@ retryPolicy:
 - 搜索从认证开始到读完响应共用 30 秒总期限。超过 1 MiB 的响应会被拒绝，失败时会取消尚未读完的响应体。调用方也可以提前取消搜索。
 - `enableImageTool: true` 为具备视觉能力的模型注册 `view_image`。远程读取只接受不带凭据的公网 HTTP(S)，并重新检查 DNS 与重定向。
 - `enableImageGeneration: true` 注册 GPT Image 图片生成；Alpha 4.48 构建还支持编辑明确选定的会话图片。原有纯文字生图保留，可用性、尺寸和额度仍由账户及服务端控制。
-- `imageModelHint` 是“插件配置”或 profile config 中的可选设置，按 profile 保存。留空使用 `gpt-image-2`；自定义值接受 1–128 个 ASCII 字母、数字、点、下划线或连字符，且必须以字母或数字开头。保存后会修改后续请求的 `model` 字段，仍使用固定的生成或编辑端点；清空可恢复默认值。Alpha 4.47 只接受 `prompt`；Alpha 4.48 还接受显式编辑输入。这是未经验证的路由提示：服务端可能忽略或拒绝，也不保证返回指定模型。
+- `imageModelHint` 是“插件配置”或 profile config 中的可选设置，按 profile 保存。留空默认使用 `gpt-image-2.6-flare`；可在设置页切换 `gpt-image-2.6-flare` / `gpt-image-2.6-sunburst`，或输入自定义值（1–128 个 ASCII 字母、数字、点、下划线或连字符，且必须以字母或数字开头）。保存后会修改后续请求的 `model` 字段，仍使用固定的生成或编辑端点；清空可恢复默认值。
 
 生成的原文件保存在 `$DSH_HOME/dsh-codex-connect/images/v1`；对话会收到另一份 DSH 附件预览。结果卡片会报告尺寸和文件大小，并可下载任一版本。原文件仅允许所有者访问，下载前会校验完整性，并且只对创建会话及继承了该结果的 fork 开放。关闭能力或卸载插件不会自动删除这些文件。
 
@@ -166,8 +163,6 @@ Alpha 4.49 中，完整 `attachment` 选择器匹配到实际用户上传记录�
 | 字段 | 默认值 | 含义 |
 |---|---:|---|
 | `models` | 完整目录 | 可见的 Codex model id；空数组隐藏全部条目 |
-| `enableProxy` | `false` | Codex Connect 流量是否使用 `proxyUrl` |
-| `proxyUrl` | `http://127.0.0.1:7890` | 不带凭据的 HTTP(S) proxy origin；启用前不生效 |
 | `contextWindowOverrides` | 无 | 按模型设置客户端上下文预算 |
 | `enableSearch` | `false` | 注册 Codex 搜索，并在保存时将它选为搜索提供方 |
 | `enableReserveFallback` | `false` | 已退役功能的兼容字段；合法旧值被接受但忽略 |

@@ -45,8 +45,8 @@ export const OPENAI_CODEX_IMAGE_MAX_COUNT = 4
 /** Local prompt limit enforced before any credential or network work. */
 export const OPENAI_CODEX_IMAGE_PROMPT_MAX_LENGTH = 32_000
 
-/** Internal, unverified route hint. It is intentionally not exported. */
-const IMAGE_ROUTE_HINT_MODEL = 'gpt-image-2'
+/** Default subscription image generation model when imageModelHint is empty. */
+const IMAGE_ROUTE_HINT_MODEL = 'gpt-image-2.6-flare'
 
 /** Stable, secret-free transport errors consumed structurally by companion packages. */
 export const OPENAI_CODEX_TRANSPORT_ERROR_CODES = {
