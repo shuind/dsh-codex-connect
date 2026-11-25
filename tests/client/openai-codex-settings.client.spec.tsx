@@ -569,7 +569,8 @@ describe('OpenAI Codex Plugin configuration card', () => {
     expect(enableSearch.checked).toBe(false)
     expect(enableImageGeneration.checked).toBe(false)
     expect(screen.queryByRole('textbox', { name: en.searchModel })).toBeNull()
-    expect(screen.queryByRole('textbox', { name: /Image model override/u })).toBeNull()
+    expect(screen.queryByRole('combobox', { name: en.imageModelHint })).toBeNull()
+    expect(screen.queryByRole('textbox', { name: en.imageModelCustomLabel })).toBeNull()
     expect(screen.queryByRole('button', { name: en.save })).toBeNull()
     expect(en.enableImageGenerationHelp).toContain('without switching models')
     expect(en.enableImageGenerationHelp).toContain('only the selected target and reference images')
@@ -592,7 +593,14 @@ describe('OpenAI Codex Plugin configuration card', () => {
     fireEvent.change(screen.getByRole('combobox', { name: en.searchMode }), { target: { value: 'live' } })
     fireEvent.change(screen.getByRole('spinbutton', { name: en.searchMaxOutputTokens }), { target: { value: '2048' } })
     fireEvent.click(enableImageGeneration)
-    const imageModelHint = screen.getByRole('textbox', { name: /Image model override/u }) as HTMLInputElement
+    const imageModelSelect = screen.getByRole('combobox', { name: en.imageModelHint }) as HTMLSelectElement
+    expect(imageModelSelect.value).toBe('')
+    expect(screen.queryByRole('textbox', { name: en.imageModelCustomLabel })).toBeNull()
+    fireEvent.change(imageModelSelect, { target: { value: 'gpt-image-2.6-sunburst' } })
+    expect(imageModelSelect.value).toBe('gpt-image-2.6-sunburst')
+    expect(screen.queryByRole('textbox', { name: en.imageModelCustomLabel })).toBeNull()
+    fireEvent.change(imageModelSelect, { target: { value: '__custom__' } })
+    const imageModelHint = screen.getByRole('textbox', { name: en.imageModelCustomLabel }) as HTMLInputElement
     expect(imageModelHint.placeholder).toContain('gpt-image-2')
     fireEvent.change(imageModelHint, { target: { value: 'custom-image-route' } })
     fireEvent.click(screen.getByRole('button', { name: en.save }))
@@ -614,7 +622,9 @@ describe('OpenAI Codex Plugin configuration card', () => {
       imageModelHint: 'existing-route',
     })
     render(<OpenAICodexConfiguration scope={scope} t={t} activeModule="capabilities" />)
-    const hint = await screen.findByRole('textbox', { name: /Image model override/u }) as HTMLInputElement
+    const select = await screen.findByRole('combobox', { name: en.imageModelHint }) as HTMLSelectElement
+    expect(select.value).toBe('__custom__')
+    const hint = screen.getByRole('textbox', { name: en.imageModelCustomLabel }) as HTMLInputElement
     fireEvent.change(hint, { target: { value: 'https://invalid.example' } })
     const save = screen.getByRole('button', { name: en.save }) as HTMLButtonElement
     expect(save.disabled).toBe(true)
@@ -624,6 +634,12 @@ describe('OpenAI Codex Plugin configuration card', () => {
     fireEvent.click(save)
     await screen.findByText(en.settingsSaved)
     expect(mutate).toHaveBeenCalledWith(expect.arrayContaining([{ op: 'set', path: ['imageModelHint'], value: '' }]), expect.any(Number))
+
+    fireEvent.change(select, { target: { value: 'gpt-image-2.6-flare' } })
+    expect(screen.queryByRole('textbox', { name: en.imageModelCustomLabel })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
+    await screen.findByText(en.settingsSaved)
+    expect(mutate).toHaveBeenLastCalledWith(expect.arrayContaining([{ op: 'set', path: ['imageModelHint'], value: 'gpt-image-2.6-flare' }]), expect.any(Number))
   })
 
   it('orders models strongest-first, splits enabled and disabled groups, and saves visibility', async () => {
