@@ -1,9 +1,10 @@
-/** One-line show-once overlay and compact header version/update bar for Codex Connect. */
+/** One-line show-once overlay and passive header update notice for Codex Connect. */
 
 import { useEffect, useSyncExternalStore } from 'react'
 import type { CSSProperties } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { OpenAICodexSettingsKey } from '../locales/index.ts'
+import type { OpenAICodexUpdateSnapshot } from '../shared/update-store.ts'
 import { OpenAICodexUpdateStore } from '../shared/update-store.ts'
 
 export interface OpenAICodexUpdateNoticeInjected {
@@ -74,20 +75,8 @@ const inlineBarStyle: CSSProperties = {
   color: 'var(--dsw-alias-label-secondary)',
   flexWrap: 'wrap',
 }
-const inlineButtonStyle: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  minHeight: 24,
-  padding: '2px 8px',
-  border: '0.5px solid var(--dsw-alias-border-l2)',
-  borderRadius: 6,
-  background: 'transparent',
-  color: 'var(--dsw-alias-label-secondary)',
-  font: 'inherit',
-  fontSize: 11.5,
-  lineHeight: '16px',
-  cursor: 'pointer',
-  whiteSpace: 'nowrap',
+const warningTextStyle: CSSProperties = {
+  color: 'var(--dsw-alias-state-warning-primary, #b54708)',
 }
 const inlineLinkStyle: CSSProperties = {
   color: 'var(--dsw-alias-brand-primary)',
@@ -97,18 +86,23 @@ const inlineLinkStyle: CSSProperties = {
   textUnderlineOffset: 2,
 }
 
-function pluginVersionSummary(current: string, latest: string | undefined, t: OpenAICodexUpdateTranslation): string {
-  if (latest === undefined) return t('currentVersion', { version: current })
-  return current === latest
-    ? t('compatibilityPluginSame', { version: current })
-    : t('compatibilityPluginDifferent', { current, latest })
+function isIncompatibleUpdate(snapshot: OpenAICodexUpdateSnapshot): boolean {
+  return snapshot.dshCompatible === false
+    && snapshot.dshVersion !== undefined
+    && snapshot.requiredDsh !== undefined
 }
 
-/** Compact one-line update reminder shown at most once per newer version. */
+function updateNoticeKey(snapshot: OpenAICodexUpdateSnapshot): string | undefined {
+  if (snapshot.latestVersion === undefined) return undefined
+  const base = `${snapshot.currentVersion}:${snapshot.latestVersion}`
+  return snapshot.dshCompatible === false ? `${base}:incompatible` : base
+}
+
+/** Compact one-line update reminder shown at most once per newer version/compatibility state. */
 export function OpenAICodexUpdateOverlay({ updater, t }: OpenAICodexUpdateOverlayProps) {
   const snapshot = useSyncExternalStore(updater.subscribe, updater.getSnapshot, updater.getSnapshot)
   const latestVersion = snapshot.latestVersion
-  const noticeKey = latestVersion === undefined ? undefined : `${snapshot.currentVersion}:${latestVersion}`
+  const noticeKey = updateNoticeKey(snapshot)
   const visible = snapshot.status === 'update-available'
     && noticeKey !== undefined
     && snapshot.dismissedNotice !== noticeKey
@@ -119,9 +113,18 @@ export function OpenAICodexUpdateOverlay({ updater, t }: OpenAICodexUpdateOverla
 
   if (!visible || noticeKey === undefined || latestVersion === undefined) return null
 
+  const incompatible = isIncompatibleUpdate(snapshot)
+  const text = incompatible
+    ? t('updateIncompatibleNotice', {
+        version: latestVersion,
+        dshVersion: snapshot.dshVersion,
+        requiredDsh: snapshot.requiredDsh,
+      })
+    : t('updateOneLineNotice', { version: latestVersion })
+
   return (
     <div style={overlayBarStyle} role="status" aria-label={t('updateHeading')}>
-      <span style={overlayTextStyle}>{t('updateOneLineNotice', { version: latestVersion })}</span>
+      <span style={incompatible ? { ...overlayTextStyle, ...warningTextStyle } : overlayTextStyle}>{text}</span>
       {snapshot.releaseUrl === undefined ? null : (
         <a href={snapshot.releaseUrl} target="_blank" rel="noopener noreferrer" style={overlayLinkStyle}>
           {t('openReleasePage')}
@@ -140,28 +143,29 @@ export function OpenAICodexUpdateOverlay({ updater, t }: OpenAICodexUpdateOverla
   )
 }
 
-/** Compact single-row version summary & manual update trigger inside settings header. */
+/** Passive update notice shown in settings header only when a newer version is available. */
 export function OpenAICodexUpdateSettings({ updater, t }: OpenAICodexUpdateSettingsProps) {
   const snapshot = useSyncExternalStore(updater.subscribe, updater.getSnapshot, updater.getSnapshot)
   const latestVersion = snapshot.latestVersion
-  const available = snapshot.status === 'update-available'
+  if (snapshot.status !== 'update-available' || latestVersion === undefined) return null
+
+  const incompatible = isIncompatibleUpdate(snapshot)
+  const text = incompatible
+    ? t('newVersionIncompatible', {
+        version: latestVersion,
+        dshVersion: snapshot.dshVersion,
+        requiredDsh: snapshot.requiredDsh,
+      })
+    : t('newVersionAvailable', { version: latestVersion })
 
   return (
     <div style={inlineBarStyle} role="region" aria-label={t('updateHeading')}>
-      <span>{pluginVersionSummary(snapshot.currentVersion, latestVersion, t)}</span>
-      {available && snapshot.releaseUrl !== undefined ? (
+      <span style={incompatible ? warningTextStyle : undefined}>{text}</span>
+      {snapshot.releaseUrl === undefined ? null : (
         <a href={snapshot.releaseUrl} target="_blank" rel="noopener noreferrer" style={inlineLinkStyle}>
           {t('openReleasePage')}
         </a>
-      ) : null}
-      <button
-        type="button"
-        style={inlineButtonStyle}
-        disabled={snapshot.status === 'checking'}
-        onClick={() => { void updater.refresh(true) }}
-      >
-        {snapshot.status === 'checking' ? t('checkingForUpdates') : t('checkForUpdates')}
-      </button>
+      )}
     </div>
   )
 }

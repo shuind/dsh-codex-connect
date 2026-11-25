@@ -309,7 +309,9 @@ export const zh: { [Key in OpenAICodexSettingsKey]: string } = {
   checkingForUpdates: '正在检查更新…',
   upToDate: '当前已经是最新可用版本（{version}）。',
   newVersionAvailable: '发现新版本：{version}',
+  newVersionIncompatible: '发现新版本 v{version}，不适配当前 DSH（当前 {dshVersion}，需要 {requiredDsh}）',
   updateOneLineNotice: 'Codex Connect 有新版本 v{version}',
+  updateIncompatibleNotice: 'Codex Connect 有新版本 v{version}，但不适配当前 DSH（当前 {dshVersion}，需要 {requiredDsh}）',
   openReleasePage: '查看更新',
   dismissUpdate: '关闭',
 }

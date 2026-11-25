@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { en, zh } from '../../src/client/locales/index.ts'
 import { OpenAICodexUpdateOverlay, OpenAICodexUpdateSettings } from '../../src/client/notices/OpenAICodexUpdateNotice.tsx'
@@ -131,7 +131,7 @@ describe('Codex Connect one-line show-once update reminder', () => {
     reloadedStore.dispose()
   })
 
-  it('shows concise plugin version and manual check button in settings', async () => {
+  it('shows update notice in settings only when an update is available and omits manual check button', async () => {
     const fetchMock = vi.fn(async (input: string): Promise<Response> => {
       expect(input).toBe(OPENAI_CODEX_UPDATE_PATH)
       return json({
@@ -145,14 +145,26 @@ describe('Codex Connect one-line show-once update reminder', () => {
     vi.stubGlobal('fetch', fetchMock)
     const updater = new OpenAICodexUpdateStore('0.2.0')
     render(<OpenAICodexUpdateSettings updater={updater} t={t} />)
-    fireEvent.click(screen.getByRole('button', { name: en.checkForUpdates }))
+    expect(screen.queryByRole('button', { name: en.checkForUpdates })).toBeNull()
+    expect(screen.queryByRole('region')).toBeNull()
 
-    await waitFor(() => {
-      expect(screen.getByRole('region').textContent).toContain(en.compatibilityPluginSame.replace('{version}', '0.2.0'))
-    })
+    await act(async () => { await updater.refresh(true) })
+    expect(screen.queryByRole('region')).toBeNull()
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(zh.dismissUpdate).toBe('关闭')
     expect(browserStorage.getItem(OPENAI_CODEX_UPDATE_CACHE_KEY)).toContain('up-to-date')
+
+    fetchMock.mockResolvedValueOnce(json({
+      status: 'update-available',
+      currentVersion: '0.2.0',
+      latestVersion: '0.2.1',
+      releaseUrl: 'https://github.com/shuind/dsh-codex-connect/releases/tag/v0.2.1',
+    }))
+    await act(async () => { await updater.refresh(true) })
+    expect(screen.getByRole('region').textContent).toContain(en.newVersionAvailable.replace('{version}', '0.2.1'))
+    expect(screen.getByRole('link', { name: en.openReleasePage }).getAttribute('href'))
+      .toBe('https://github.com/shuind/dsh-codex-connect/releases/tag/v0.2.1')
+    expect(screen.queryByRole('button', { name: en.checkForUpdates })).toBeNull()
     updater.dispose()
   })
 
@@ -203,8 +215,50 @@ describe('Codex Connect one-line show-once update reminder', () => {
     expect(updater.getSnapshot().status).toBe('unavailable')
     expect(browserStorage.getItem(OPENAI_CODEX_UPDATE_CACHE_KEY)).toBeNull()
     render(<OpenAICodexUpdateSettings updater={updater} t={t} />)
-    expect(screen.getByRole('region').textContent).toContain(en.currentVersion.replace('{version}', '0.2.0'))
-    expect(screen.getByRole('region').textContent).not.toMatch(/unavailable/iu)
+    expect(screen.queryByRole('region')).toBeNull()
     updater.dispose()
+  })
+
+  it('warns at most once when a newer version is incompatible with the installed DSH version', async () => {
+    const browserStorage = storageFixture()
+    vi.stubGlobal('localStorage', browserStorage)
+    vi.stubGlobal('fetch', vi.fn(async (): Promise<Response> => json({
+      status: 'update-available',
+      currentVersion: '0.2.0',
+      latestVersion: '0.3.0',
+      releaseUrl: 'https://github.com/shuind/dsh-codex-connect/releases/tag/v0.3.0',
+      dshVersion: '0.2.2-rc.5',
+      requiredDsh: '>=0.2.3',
+      dshCompatible: false,
+    })))
+
+    const firstStore = new OpenAICodexUpdateStore('0.2.0')
+    await act(async () => { await firstStore.refresh(true) })
+    const view = render(
+      <>
+        <OpenAICodexUpdateOverlay updater={firstStore} t={t} {...overlayShellProps()} />
+        <OpenAICodexUpdateSettings updater={firstStore} t={t} />
+      </>,
+    )
+    expect(screen.getByRole('status').textContent).toContain(t('updateIncompatibleNotice', {
+      version: '0.3.0',
+      dshVersion: '0.2.2-rc.5',
+      requiredDsh: '>=0.2.3',
+    }))
+    expect(screen.getByRole('region').textContent).toContain(t('newVersionIncompatible', {
+      version: '0.3.0',
+      dshVersion: '0.2.2-rc.5',
+      requiredDsh: '>=0.2.3',
+    }))
+    expect(browserStorage.getItem(OPENAI_CODEX_UPDATE_DISMISSED_KEY)).toBe('0.2.0:0.3.0:incompatible')
+    expect(zh.updateIncompatibleNotice).toContain('不适配当前 DSH')
+    view.unmount()
+    firstStore.dispose()
+
+    const reloadedStore = new OpenAICodexUpdateStore('0.2.0')
+    await act(async () => { await reloadedStore.refresh() })
+    render(<OpenAICodexUpdateOverlay updater={reloadedStore} t={t} {...overlayShellProps()} />)
+    expect(screen.queryByRole('status')).toBeNull()
+    reloadedStore.dispose()
   })
 })

@@ -10,6 +10,7 @@ import type { OpenAICodexTrustedOriginsStore } from '../../src/platform/http/tru
 import {
   OPENAI_CODEX_GITHUB_LATEST_RELEASE_URL,
   OPENAI_CODEX_NPM_METADATA_URL,
+  openAICodexGitHubRawPackageUrl,
 } from '../../src/platform/update/checker.ts'
 
 const trustedOrigins = { has: async () => false } as unknown as OpenAICodexTrustedOriginsStore
@@ -17,9 +18,10 @@ const trustedOrigins = { has: async () => false } as unknown as OpenAICodexTrust
 function capture(
   fetchImpl: (input: string, init?: RequestInit) => Promise<Response>,
   admission: TestHttpAdmission = 'allow',
+  dshVersion: string | null = '0.2.2-rc.5',
 ): CapturedHttpRoute {
   const { ctx, routes } = httpRouteTestContext({ admission })
-  registerOpenAICodexUpdateRoutes(ctx, { currentVersion: '0.2.0', fetchImpl }, trustedOrigins)
+  registerOpenAICodexUpdateRoutes(ctx, { currentVersion: '0.2.0', dshVersion, fetchImpl }, trustedOrigins)
   const route = [...routes.values()].find(candidate => candidate.path === OPENAI_CODEX_UPDATE_PATH)
   if (route === undefined) throw new Error('update route was not registered')
   return route
@@ -77,8 +79,9 @@ describe('Codex Connect update route', () => {
   it('returns a safe update result from npm or GitHub fallback for trusted loopback GETs', async () => {
     const fetchMock = vi.fn(async (url: string): Promise<Response> => {
       if (url === OPENAI_CODEX_NPM_METADATA_URL) return json({ error: 'Not found' }, 404)
-      expect(url).toBe(OPENAI_CODEX_GITHUB_LATEST_RELEASE_URL)
-      return json({ tag_name: 'v0.2.1' })
+      if (url === OPENAI_CODEX_GITHUB_LATEST_RELEASE_URL) return json({ tag_name: 'v0.2.1' })
+      expect(url).toBe(openAICodexGitHubRawPackageUrl('0.2.1'))
+      return json({ engines: { dsh: '>=0.2.3' } })
     })
     const route = capture(fetchMock)
     const res = response()
@@ -90,6 +93,9 @@ describe('Codex Connect update route', () => {
       currentVersion: '0.2.0',
       latestVersion: '0.2.1',
       releaseUrl: 'https://github.com/shuind/dsh-codex-connect/releases/tag/v0.2.1',
+      dshVersion: '0.2.2-rc.5',
+      requiredDsh: '>=0.2.3',
+      dshCompatible: false,
     })
     expect(JSON.parse(res.observed.body ?? 'null')).not.toHaveProperty('credential')
   })

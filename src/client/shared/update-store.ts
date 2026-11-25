@@ -18,6 +18,9 @@ export type OpenAICodexUpdateSnapshot = {
   checkedAt?: number
   latestVersion?: string
   releaseUrl?: string
+  dshVersion?: string
+  requiredDsh?: string
+  dshCompatible?: boolean
   dismissedNotice?: string
 }
 
@@ -42,7 +45,12 @@ function resultSnapshot(result: OpenAICodexUpdateResult, dismissedNotice?: strin
       ? { latestVersion: result.latestVersion }
       : {},
     ...result.status === 'update-available'
-      ? { releaseUrl: result.releaseUrl }
+      ? {
+          releaseUrl: result.releaseUrl,
+          ...result.dshVersion === undefined ? {} : { dshVersion: result.dshVersion },
+          ...result.requiredDsh === undefined ? {} : { requiredDsh: result.requiredDsh },
+          ...result.dshCompatible === undefined ? {} : { dshCompatible: result.dshCompatible },
+        }
       : {},
     ...dismissedNotice === undefined ? {} : { dismissedNotice },
   }

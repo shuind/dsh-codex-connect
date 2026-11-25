@@ -12,6 +12,7 @@ export { OPENAI_CODEX_UPDATE_PATH }
 
 interface UpdateRouteOptions {
   currentVersion: string
+  dshVersion?: string | null
   fetchImpl?: (input: string, init?: RequestInit) => Promise<Response>
   timeoutMs?: number
 }
@@ -34,6 +35,7 @@ export function registerOpenAICodexUpdateRoutes(
         try {
           result = await checkForOpenAICodexUpdate({
             currentVersion: options.currentVersion,
+            ...(options.dshVersion === undefined ? {} : { dshVersion: options.dshVersion }),
             ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
             timeoutMs: options.timeoutMs ?? OPENAI_CODEX_UPDATE_TIMEOUT_MS,
           })

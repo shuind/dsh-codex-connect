@@ -307,7 +307,9 @@ export const en = {
   checkingForUpdates: 'Checking for updates…',
   upToDate: 'You are using the latest available version ({version}).',
   newVersionAvailable: 'New version available: {version}',
+  newVersionIncompatible: 'v{version} available · incompatible with DSH {dshVersion} (requires {requiredDsh})',
   updateOneLineNotice: 'Codex Connect v{version} is available',
+  updateIncompatibleNotice: 'Codex Connect v{version} is available, but incompatible with DSH {dshVersion} (requires {requiredDsh})',
   openReleasePage: 'View release',
   dismissUpdate: 'Close',
 }

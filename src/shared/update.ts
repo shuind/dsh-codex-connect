@@ -1,10 +1,14 @@
-/** Node-free update route constants, version helpers, and result validation. */
+/** Node-free update route constants, version helpers, DSH range matching, and result validation. */
 
 export const OPENAI_CODEX_UPDATE_PATH = '/openai-codex/update'
 export const OPENAI_CODEX_PACKAGE_NAME = '@shuind/dsh-codex-connect'
 export const OPENAI_CODEX_NPM_METADATA_URL = `https://registry.npmjs.org/-/package/${OPENAI_CODEX_PACKAGE_NAME}/dist-tags`
+export const OPENAI_CODEX_NPM_VERSION_METADATA_BASE = `https://registry.npmjs.org/${OPENAI_CODEX_PACKAGE_NAME}/`
 export const OPENAI_CODEX_GITHUB_LATEST_RELEASE_URL = 'https://api.github.com/repos/shuind/dsh-codex-connect/releases/latest'
+export const OPENAI_CODEX_GITHUB_RAW_PACKAGE_URL_BASE = 'https://raw.githubusercontent.com/shuind/dsh-codex-connect/v'
 export const OPENAI_CODEX_RELEASE_PAGE_BASE = 'https://github.com/shuind/dsh-codex-connect/releases/tag/v'
+
+const MAX_DSH_RANGE_LENGTH = 256
 
 export type OpenAICodexUpdateResult =
   | {
@@ -17,6 +21,9 @@ export type OpenAICodexUpdateResult =
       currentVersion: string
       latestVersion: string
       releaseUrl: string
+      dshVersion?: string
+      requiredDsh?: string
+      dshCompatible?: boolean
     }
   | {
       status: 'unavailable'
@@ -37,6 +44,14 @@ export function normalizeOpenAICodexVersion(raw: string): string {
 
 export function openAICodexReleaseUrl(version: string): string {
   return `${OPENAI_CODEX_RELEASE_PAGE_BASE}${normalizeOpenAICodexVersion(version)}`
+}
+
+export function openAICodexNpmVersionUrl(version: string): string {
+  return `${OPENAI_CODEX_NPM_VERSION_METADATA_BASE}${encodeURIComponent(normalizeOpenAICodexVersion(version))}`
+}
+
+export function openAICodexGitHubRawPackageUrl(version: string): string {
+  return `${OPENAI_CODEX_GITHUB_RAW_PACKAGE_URL_BASE}${encodeURIComponent(normalizeOpenAICodexVersion(version))}/package.json`
 }
 
 function parseVersionParts(raw: string): ParsedVersion | undefined {
@@ -84,6 +99,61 @@ export function compareOpenAICodexVersions(left: string, right: string): number 
   return 0
 }
 
+function matchComparator(dshVersion: string, token: string): boolean | undefined {
+  const match = /^(>=|<=|>|<|=|\^|~)?(.+)$/u.exec(token)
+  if (match === null) return undefined
+  const operator = match[1] ?? '='
+  const rawTarget = match[2] ?? ''
+  const target = parseOpenAICodexVersion(rawTarget)
+  if (target === undefined) return undefined
+  const normalizedTarget = normalizeOpenAICodexVersion(rawTarget)
+  if (operator === '=') return compareOpenAICodexVersions(dshVersion, normalizedTarget) === 0
+  if (operator === '>=') return compareOpenAICodexVersions(dshVersion, normalizedTarget) >= 0
+  if (operator === '<=') return compareOpenAICodexVersions(dshVersion, normalizedTarget) <= 0
+  if (operator === '>') return compareOpenAICodexVersions(dshVersion, normalizedTarget) > 0
+  if (operator === '<') {
+    const ceiling = target.prerelease.length === 0 ? `${target.major}.${target.minor}.${target.patch}-0` : normalizedTarget
+    return compareOpenAICodexVersions(dshVersion, ceiling) < 0
+  }
+  if (operator === '^') {
+    if (compareOpenAICodexVersions(dshVersion, normalizedTarget) < 0) return false
+    const ceiling = target.major > 0
+      ? `${target.major + 1}.0.0-0`
+      : target.minor > 0
+        ? `0.${target.minor + 1}.0-0`
+        : `0.0.${target.patch + 1}-0`
+    return compareOpenAICodexVersions(dshVersion, ceiling) < 0
+  }
+  if (operator === '~') {
+    if (compareOpenAICodexVersions(dshVersion, normalizedTarget) < 0) return false
+    return compareOpenAICodexVersions(dshVersion, `${target.major}.${target.minor + 1}.0-0`) < 0
+  }
+  return undefined
+}
+
+/** Check whether an installed DSH version satisfies a plugin `engines.dsh` SemVer range. */
+export function satisfiesOpenAICodexDshRange(dshVersion: string, range: string): boolean | undefined {
+  if (parseOpenAICodexVersion(dshVersion) === undefined) return undefined
+  const trimmed = range.trim()
+  if (trimmed.length === 0 || trimmed.length > MAX_DSH_RANGE_LENGTH) return undefined
+  const normalizedDsh = normalizeOpenAICodexVersion(dshVersion)
+  const clauses = trimmed.split('||').map(part => part.trim())
+  if (clauses.some(clause => clause.length === 0)) return undefined
+  let matched = false
+  for (const clause of clauses) {
+    const tokens = clause.split(/\s+/u).filter(Boolean)
+    if (tokens.length === 0) return undefined
+    let clauseMatches = true
+    for (const token of tokens) {
+      const result = matchComparator(normalizedDsh, token)
+      if (result === undefined) return undefined
+      if (!result) clauseMatches = false
+    }
+    if (clauseMatches) matched = true
+  }
+  return matched
+}
+
 /** Validate a route response before it is rendered by the browser. */
 export function parseOpenAICodexUpdateResult(value: unknown): OpenAICodexUpdateResult | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
@@ -104,5 +174,23 @@ export function parseOpenAICodexUpdateResult(value: unknown): OpenAICodexUpdateR
   if (record['status'] !== 'update-available' || compareOpenAICodexVersions(latestVersion, currentVersion) <= 0) return undefined
   const expectedUrl = openAICodexReleaseUrl(latestVersion)
   if (record['releaseUrl'] !== expectedUrl) return undefined
-  return { status: 'update-available', currentVersion, latestVersion, releaseUrl: expectedUrl }
+  const dshVersion = record['dshVersion']
+  const requiredDsh = record['requiredDsh']
+  const dshCompatible = record['dshCompatible']
+  const hasAnyCompat = dshVersion !== undefined || requiredDsh !== undefined || dshCompatible !== undefined
+  if (!hasAnyCompat) {
+    return { status: 'update-available', currentVersion, latestVersion, releaseUrl: expectedUrl }
+  }
+  if (typeof dshVersion !== 'string' || parseOpenAICodexVersion(dshVersion) === undefined) return undefined
+  if (typeof requiredDsh !== 'string' || requiredDsh.trim().length === 0 || requiredDsh.length > MAX_DSH_RANGE_LENGTH) return undefined
+  if (typeof dshCompatible !== 'boolean') return undefined
+  return {
+    status: 'update-available',
+    currentVersion,
+    latestVersion,
+    releaseUrl: expectedUrl,
+    dshVersion: normalizeOpenAICodexVersion(dshVersion),
+    requiredDsh: requiredDsh.trim(),
+    dshCompatible,
+  }
 }
