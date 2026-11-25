@@ -1,4 +1,4 @@
-/** Account status, multi-account controls, OAuth feedback, and quota bars. */
+/** Account status, multi-account controls, OAuth feedback, and color-coded quota bars. */
 
 import { useEffect, useId, useState } from 'react'
 import type { CSSProperties } from 'react'
@@ -7,33 +7,42 @@ import type { OpenAICodexAccountStore, AccountSnapshot, AccountStatus } from '..
 import { isOfficialDesktopShell } from '../shared/browser-launch.ts'
 import type { OpenAICodexSettingsKey } from '../locales/index.ts'
 import {
-  accountBodyStyle,
-  accountButtonStyle,
-  accountErrorStyle,
-  accountPrimaryButtonStyle,
-  dangerButtonStyle,
+  activeBadgeStyle,
+  bodyStyle,
+  buttonsStyle,
+  errorStyle,
+  primaryButtonStyle,
   quotaTitleStyle,
   rowStyle,
 } from './styles.ts'
 
 export type OpenAICodexTranslate = (key: OpenAICodexSettingsKey, params?: Record<string, unknown>) => string
 
-const quotaListStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 18, paddingTop: 2 }
-const quotaGroupStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 10 }
-const quotaLabelStyle: CSSProperties = { display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13, lineHeight: '20px', color: 'var(--dsw-alias-label-secondary)' }
-const progressTrackStyle: CSSProperties = { height: 8, overflow: 'hidden', borderRadius: 999, background: 'var(--dsw-alias-bg-layer-2, rgba(0, 0, 0, 0.08))' }
-const commandStyle: CSSProperties = { margin: 0, padding: '10px 12px', overflowX: 'auto', borderRadius: 8, background: 'var(--dsw-alias-bg-layer-2, rgba(0, 0, 0, 0.06))', color: 'var(--dsw-alias-label-primary)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 13, lineHeight: '20px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }
-const accountPanelStyle: CSSProperties = { overflow: 'hidden', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 10 }
-const accountRowStyle: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, padding: '12px 14px', borderTop: '1px solid var(--dsw-alias-border-l2)' }
-const accountIdentityStyle: CSSProperties = { minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }
-const accountBadgeStyle: CSSProperties = { display: 'inline-flex', marginLeft: 7, padding: '1px 7px', borderRadius: 999, background: 'var(--dsw-alias-state-success-secondary, rgba(34, 160, 107, 0.12))', color: 'var(--dsw-alias-state-success-primary, #087a41)', fontSize: 11, lineHeight: '18px', fontWeight: 600 }
+const quotaGridStyle: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }
+const quotaCardStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 12px', borderRadius: 8, background: 'var(--dsw-alias-bg-layer-2, rgba(128, 128, 128, 0.06))' }
+const quotaLabelStyle: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, fontSize: 12, lineHeight: '16px', color: 'var(--dsw-alias-label-secondary)' }
+const quotaPercentStyle: CSSProperties = { fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: 'var(--dsw-alias-label-primary)' }
+const progressTrackStyle: CSSProperties = { height: 6, overflow: 'hidden', borderRadius: 999, background: 'var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.2))' }
+const commandStyle: CSSProperties = { margin: 0, padding: '8px 10px', overflowX: 'auto', borderRadius: 8, background: 'var(--dsw-alias-bg-layer-2, rgba(128, 128, 128, 0.08))', color: 'var(--dsw-alias-label-primary)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12, lineHeight: '18px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }
+const accountPanelStyle: CSSProperties = { marginTop: 10, paddingTop: 10, borderTop: '0.5px solid var(--dsw-alias-border-l2)', display: 'flex', flexDirection: 'column', gap: 8 }
+const accountRowStyle: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, padding: '8px 10px', borderRadius: 8, background: 'var(--dsw-alias-bg-layer-2, rgba(128, 128, 128, 0.05))' }
+const accountIdentityStyle: CSSProperties = { minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }
+
+function quotaFillColor(percent: number): string {
+  const bounded = Math.max(0, Math.min(100, percent))
+  if (bounded >= 60) return 'var(--dsw-alias-state-success-primary, #22c55e)'
+  if (bounded >= 40) return 'var(--dsw-alias-state-warn-primary, #eab308)'
+  if (bounded >= 20) return '#f97316'
+  return 'var(--dsw-alias-state-error-primary, #ef4444)'
+}
 
 function progressFillStyle(percent: number): CSSProperties {
   return {
     width: `${Math.max(0, Math.min(100, percent))}%`,
     height: '100%',
     borderRadius: 'inherit',
-    background: 'var(--dsw-alias-brand-primary, #1677ff)',
+    background: quotaFillColor(percent),
+    transition: 'width 0.2s ease',
   }
 }
 
@@ -64,10 +73,10 @@ function QuotaBar({ label, percent, detail, t }: {
 }) {
   const display = formatPercent(percent)
   return (
-    <div style={quotaGroupStyle}>
+    <div style={quotaCardStyle}>
       <div style={quotaLabelStyle}>
         <span>{label}</span>
-        <span>{t('percentRemaining', { percent: display })}</span>
+        <span style={quotaPercentStyle}>{t('percentRemaining', { percent: display })}</span>
       </div>
       <div
         style={progressTrackStyle}
@@ -80,7 +89,7 @@ function QuotaBar({ label, percent, detail, t }: {
       >
         <div style={progressFillStyle(percent)} />
       </div>
-      {detail === undefined ? null : <p style={accountBodyStyle}>{detail}</p>}
+      {detail === undefined ? null : <p style={{ ...bodyStyle, fontSize: 11.5 }}>{detail}</p>}
     </div>
   )
 }
@@ -94,13 +103,13 @@ export function UsageLimits({ usage, quotaError, t, heading = true }: {
 }) {
   const hasData = usage.rateLimits.length > 0 || usage.credits !== undefined || usage.individualLimit !== undefined
   return (
-    <div style={quotaListStyle}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {heading ? <h3 style={quotaTitleStyle}>{t('usageLimits')}</h3> : null}
-      {usage.rateLimits.map(limit => (
-        <div key={limit.id} style={quotaGroupStyle}>
-          {limit.windows.map(window => (
+      {usage.rateLimits.length > 0 || usage.individualLimit !== undefined ? (
+        <div style={quotaGridStyle}>
+          {usage.rateLimits.flatMap(limit => limit.windows.map(window => (
             <QuotaBar
-              key={window.windowSeconds}
+              key={`${limit.id}:${window.windowSeconds}`}
               label={`${limit.name ?? limit.id} · ${windowLabel(window.windowSeconds, t)}`}
               percent={window.remainingPercent}
               detail={t('resetAt', {
@@ -108,30 +117,30 @@ export function UsageLimits({ usage, quotaError, t, heading = true }: {
               })}
               t={t}
             />
-          ))}
+          )))}
+          {usage.individualLimit === undefined ? null : (
+            <QuotaBar
+              label={t('monthlyLimit')}
+              percent={usage.individualLimit.remainingPercent}
+              detail={t('exactRemaining', {
+                remaining: usage.individualLimit.remaining,
+                limit: usage.individualLimit.limit,
+              })}
+              t={t}
+            />
+          )}
         </div>
-      ))}
-      {usage.individualLimit === undefined ? null : (
-        <QuotaBar
-          label={t('monthlyLimit')}
-          percent={usage.individualLimit.remainingPercent}
-          detail={t('exactRemaining', {
-            remaining: usage.individualLimit.remaining,
-            limit: usage.individualLimit.limit,
-          })}
-          t={t}
-        />
-      )}
+      ) : null}
       {usage.credits === undefined ? null : (
-        <div style={quotaLabelStyle}>
+        <div style={{ ...quotaLabelStyle, padding: '2px 2px 0' }}>
           <span>{t('credits')}</span>
-          <span>{usage.credits.unlimited
+          <span style={quotaPercentStyle}>{usage.credits.unlimited
             ? t('unlimited')
             : usage.credits.balance === undefined ? t('available') : usage.credits.balance}</span>
         </div>
       )}
-      {!hasData && quotaError === undefined ? <p style={accountBodyStyle}>{t('quotaUnavailable')}</p> : null}
-      {quotaError === undefined ? null : <p style={accountErrorStyle}>{t('quotaUnavailable')}</p>}
+      {!hasData && quotaError === undefined ? <p style={bodyStyle}>{t('quotaUnavailable')}</p> : null}
+      {quotaError === undefined ? null : <p style={errorStyle}>{t('quotaUnavailable')}</p>}
     </div>
   )
 }
@@ -145,7 +154,7 @@ export function dotStyle(status: AccountStatus['status']): CSSProperties {
       : status === 'signing-in' || status === 'loading'
         ? 'var(--dsw-alias-brand-primary, #1677ff)'
         : 'var(--dsw-alias-label-dimmed, #9aa0a6)'
-  return { width: 9, height: 9, borderRadius: '50%', flex: '0 0 auto', background: color }
+  return { width: 8, height: 8, borderRadius: '50%', flex: '0 0 auto', background: color }
 }
 
 /** Non-sensitive account state label for either settings presentation. */
@@ -172,16 +181,16 @@ export function AccountActions({ t, store, snapshot, compact = false }: {
     || operation.kind === 'waiting-authorization'
     || operation.kind === 'cancelling-authorization'
     || status.status === 'signing-in'
-  if (authorizing) return <div style={rowStyle}>
-    <button type="button" style={accountButtonStyle} disabled={busy} onClick={() => { void store.signIn() }}>
+  if (authorizing) return <div style={buttonsStyle}>
+    <button type="button" className="cc-btn" disabled={busy} onClick={() => { void store.signIn() }}>
       {busy ? t('working') : t(compact ? 'continueAuthorization' : 'reopenAuthorization')}
     </button>
-    <button type="button" style={accountButtonStyle} disabled={busy} onClick={() => { void store.cancel() }}>{t('cancelSignIn')}</button>
+    <button type="button" className="cc-btn" disabled={busy} onClick={() => { void store.cancel() }}>{t('cancelSignIn')}</button>
   </div>
   if (status.status === 'signed-in') return null
   const retry = status.status === 'error' || status.status === 'reauth-required'
   const action = retry ? t(compact ? 'reauthorize' : 'loginAgain') : t(compact ? 'authorize' : 'login')
-  return <button type="button" style={accountPrimaryButtonStyle} disabled={busy}
+  return <button type="button" className="cc-btn" style={primaryButtonStyle} disabled={busy}
     onClick={() => { void store.signIn() }}>{busy ? t('working') : action}</button>
 }
 
@@ -214,76 +223,87 @@ export function AccountManager({ t, store, snapshot, quotaExpanded, quotaControl
   }, [accounts, removeKey])
 
   if (accounts.length === 0) return <AccountActions t={t} store={store} snapshot={snapshot} compact={compact} />
-  return <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
     <div style={rowStyle}>
       <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, gap: 10 }}>
-        <span aria-hidden="true" style={{ width: 38, height: 38, borderRadius: '50%', display: 'grid', placeItems: 'center', flex: '0 0 auto', background: 'var(--dsw-alias-bg-layer-2, rgba(0, 0, 0, 0.06))', fontWeight: 600 }}>
+        <span aria-hidden="true" style={{ width: 32, height: 32, borderRadius: '50%', display: 'grid', placeItems: 'center', flex: '0 0 auto', background: 'var(--dsw-alias-bg-layer-2, rgba(128, 128, 128, 0.14))', fontSize: 13, fontWeight: 600 }}>
           {(active?.displayName.trim()[0] ?? 'C').toUpperCase()}
         </span>
         <span style={accountIdentityStyle}>
-          <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{active?.displayName ?? t('accountHeading')}</strong>
-          <span style={accountBodyStyle}>{active?.maskedEmail === undefined
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <strong style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{active?.displayName ?? t('accountHeading')}</strong>
+            {compact ? null : (
+              <span role="status" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)' }}>
+                <span aria-hidden="true" style={dotStyle(status.status)} />
+                <span>{accountStatusLabel(status.status, t)}</span>
+              </span>
+            )}
+          </span>
+          <span style={bodyStyle}>{active?.maskedEmail === undefined
             ? t('currentAccountDetail')
             : `${active.maskedEmail} · ${t('currentAccountDetail')}`}</span>
         </span>
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      <div style={buttonsStyle}>
         {status.status === 'reauth-required' && !authorizing
-          ? <button type="button" style={accountPrimaryButtonStyle} disabled={busy} onClick={() => { void store.signIn() }}>{t('reauthorize')}</button>
+          ? <button type="button" className="cc-btn" style={primaryButtonStyle} disabled={busy} onClick={() => { void store.signIn() }}>{t('reauthorize')}</button>
           : null}
         {authorizing ? <AccountActions t={t} store={store} snapshot={snapshot} compact /> : null}
         {onToggleQuota === undefined || status.status !== 'signed-in' ? null : (
-          <button type="button" style={accountButtonStyle} aria-expanded={quotaExpanded} aria-controls={quotaControlsId} onClick={onToggleQuota}>
+          <button type="button" className="cc-btn" aria-expanded={quotaExpanded} aria-controls={quotaControlsId} onClick={onToggleQuota}>
             {t(quotaExpanded === true ? 'hideQuota' : 'viewQuota')}
           </button>
         )}
-        <button type="button" style={accountButtonStyle} aria-expanded={expanded} aria-controls={accountsPanelId} onClick={() => { setExpanded(!expanded) }}>
+        <button type="button" className="cc-btn" aria-expanded={expanded} aria-controls={accountsPanelId} onClick={() => { setExpanded(!expanded) }}>
           {t(expanded ? 'hideAccounts' : 'manageAccounts')}
         </button>
       </div>
     </div>
-    {authorizing ? <p style={accountBodyStyle}>{t('addingAccountKeepsCurrent')}</p> : null}
+    {authorizing ? <p style={bodyStyle}>{t('addingAccountKeepsCurrent')}</p> : null}
     {expanded ? <div id={accountsPanelId} style={accountPanelStyle}>
-      <div style={{ ...rowStyle, padding: '10px 14px', background: 'var(--dsw-alias-bg-layer-2, rgba(0, 0, 0, 0.04))' }}>
-        <strong>{t('savedAccounts')} · {accounts.length}</strong>
-        <button type="button" style={accountPrimaryButtonStyle} disabled={busy || authorizing} onClick={() => { void store.signIn() }}>
+      <div style={rowStyle}>
+        <span style={quotaTitleStyle}>{t('savedAccounts')} · {accounts.length}</span>
+        <button type="button" className="cc-btn" style={primaryButtonStyle} disabled={busy || authorizing} onClick={() => { void store.signIn() }}>
           {operation.kind === 'starting-authorization' ? t('working') : t('addAccount')}
         </button>
       </div>
       {accounts.map(account => <div key={account.accountKey} style={accountRowStyle}>
         <span style={accountIdentityStyle}>
-          <strong>{account.displayName}{account.active ? <span style={accountBadgeStyle}>{t('currentAccount')}</span> : null}</strong>
-          <span style={accountBodyStyle}>{account.maskedEmail === undefined
+          <strong style={{ fontSize: 12.5, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span>{account.displayName}</span>
+            {account.active ? <span style={activeBadgeStyle}>{t('currentAccount')}</span> : null}
+          </strong>
+          <span style={bodyStyle}>{account.maskedEmail === undefined
             ? t(account.active ? 'currentAccountDetail' : 'savedAccountDetail')
             : `${account.maskedEmail} · ${t(account.active ? 'currentAccountDetail' : 'savedAccountDetail')}`}</span>
         </span>
-        <span style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          <button type="button" style={accountButtonStyle} disabled={busy || account.active}
+        <span style={buttonsStyle}>
+          <button type="button" className="cc-btn" disabled={busy || account.active}
             onClick={() => { void store.activate(account.accountKey) }}>
             {operation.kind === 'activating' && operation.accountKey === account.accountKey
               ? t('working') : t(account.active ? 'usingAccount' : 'useAccount')}
           </button>
-          <button type="button" style={dangerButtonStyle} disabled={busy} onClick={() => { setRemoveKey(account.accountKey) }}>
+          <button type="button" className="cc-btn cc-btn-danger" disabled={busy} onClick={() => { setRemoveKey(account.accountKey) }}>
             {t('removeAccount')}
           </button>
         </span>
       </div>)}
-      <div style={{ ...rowStyle, padding: '10px 14px', borderTop: '1px solid var(--dsw-alias-border-l2)' }}>
-        <span style={accountBodyStyle}>{t('activeAccountHelp')}</span>
-        <button type="button" style={dangerButtonStyle} disabled={busy} onClick={() => { void store.signOut() }}>
+      <div style={{ ...rowStyle, paddingTop: 4 }}>
+        <span style={bodyStyle}>{t('activeAccountHelp')}</span>
+        <button type="button" className="cc-btn cc-btn-danger" disabled={busy} onClick={() => { void store.signOut() }}>
           {operation.kind === 'signing-out' ? t('working') : t('signOutAll')}
         </button>
       </div>
     </div> : null}
     {removeAccount === undefined ? null : <section role="region" aria-live="polite" aria-label={t('removeAccountTitle', { name: removeAccount.displayName })}
-      style={{ padding: 14, border: '1px solid var(--dsw-alias-state-error-primary, #d92d20)', borderRadius: 10 }}>
-      <strong>{t('removeAccountTitle', { name: removeAccount.displayName })}</strong>
-      <p style={{ ...accountBodyStyle, marginTop: 5 }}>{accounts.length === 1
+      style={{ padding: 12, border: '0.5px solid var(--dsw-alias-state-error-primary, #d92d20)', borderRadius: 8 }}>
+      <strong style={{ fontSize: 13 }}>{t('removeAccountTitle', { name: removeAccount.displayName })}</strong>
+      <p style={{ ...bodyStyle, marginTop: 4 }}>{accounts.length === 1
         ? t('removeLastAccountCopy')
         : replacement === undefined ? t('removeAccountCopy') : t('removeActiveAccountCopy', { name: replacement.displayName })}</p>
-      <div style={{ ...rowStyle, justifyContent: 'flex-end' }}>
-        <button type="button" style={accountButtonStyle} onClick={() => { setRemoveKey(undefined) }}>{t('cancel')}</button>
-        <button type="button" style={dangerButtonStyle} disabled={busy} onClick={() => {
+      <div style={{ ...buttonsStyle, justifyContent: 'flex-end', marginTop: 10 }}>
+        <button type="button" className="cc-btn" onClick={() => { setRemoveKey(undefined) }}>{t('cancel')}</button>
+        <button type="button" className="cc-btn cc-btn-danger" disabled={busy} onClick={() => {
           void store.remove(removeAccount.accountKey, replacement?.accountKey)
         }}>{operation.kind === 'removing' ? t('working') : t('confirmRemove')}</button>
       </div>
@@ -297,9 +317,9 @@ function ManualCallbackForm({ t, store }: { t: OpenAICodexTranslate; store: Open
   const [callbackUrl, setCallbackUrl] = useState('')
   const id = useId()
   return <>
-    <button type="button" style={accountButtonStyle} aria-expanded={expanded} aria-controls={id}
+    <button type="button" className="cc-btn" aria-expanded={expanded} aria-controls={id}
       onClick={() => { setCallbackUrl(''); setExpanded(!expanded) }}>{t('manualCallbackToggle')}</button>
-    {expanded ? <form id={id} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', flexBasis: '100%', minWidth: 0, gap: 10 }}
+    {expanded ? <form id={id} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', flexBasis: '100%', minWidth: 0, gap: 8, marginTop: 6 }}
       onSubmit={event => {
         event.preventDefault()
         if (!callbackUrl.trim() || store.getSnapshot().busy) return
@@ -307,16 +327,15 @@ function ManualCallbackForm({ t, store }: { t: OpenAICodexTranslate; store: Open
         setCallbackUrl('')
         setExpanded(false)
       }}>
-      <p id={`${id}-help`} style={accountBodyStyle}>{t('manualCallbackHelp')}</p>
-      <p style={accountBodyStyle}>{t('manualCallbackPrivacy')}</p>
-      <label htmlFor={`${id}-input`} style={accountBodyStyle}>{t('manualCallbackLabel')}</label>
-      <input id={`${id}-input`} type="text" value={callbackUrl} autoComplete="off" spellCheck={false}
+      <p id={`${id}-help`} style={bodyStyle}>{t('manualCallbackHelp')}</p>
+      <p style={bodyStyle}>{t('manualCallbackPrivacy')}</p>
+      <label htmlFor={`${id}-input`} style={bodyStyle}>{t('manualCallbackLabel')}</label>
+      <input id={`${id}-input`} type="text" className="cc-input" value={callbackUrl} autoComplete="off" spellCheck={false}
         autoCapitalize="none" aria-describedby={`${id}-help`}
-        style={{ ...accountButtonStyle, width: '100%', borderRadius: 8, cursor: 'text' }}
         onChange={event => { setCallbackUrl(event.target.value) }} />
-      <div style={rowStyle}>
-        <button type="submit" style={accountPrimaryButtonStyle} disabled={!callbackUrl.trim()}>{t('manualCallbackSubmit')}</button>
-        <button type="button" style={accountButtonStyle} onClick={() => { setCallbackUrl(''); setExpanded(false) }}>{t('cancel')}</button>
+      <div style={buttonsStyle}>
+        <button type="submit" className="cc-btn" style={primaryButtonStyle} disabled={!callbackUrl.trim()}>{t('manualCallbackSubmit')}</button>
+        <button type="button" className="cc-btn" onClick={() => { setCallbackUrl(''); setExpanded(false) }}>{t('cancel')}</button>
       </div>
     </form> : null}
   </>
@@ -347,14 +366,15 @@ export function AccountFeedback({ t, snapshot, store }: {
   }
 
   return <>
-    {loginUrl === undefined ? null : <p style={accountBodyStyle}>{t('authorizationHelp')}</p>}
+    {loginUrl === undefined ? null : <p style={{ ...bodyStyle, marginTop: 8 }}>{t('authorizationHelp')}</p>}
     {loginUrl !== undefined || snapshot.operation.kind === 'waiting-authorization' && !snapshot.busy ? (
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+      <div style={{ ...buttonsStyle, marginTop: 8 }}>
         {loginUrl === undefined ? null : <a
           href={loginUrl}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ ...accountPrimaryButtonStyle, display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}
+          className="cc-btn"
+          style={{ ...primaryButtonStyle, textDecoration: 'none' }}
         >
           {t('openLoginInBrowser')}
         </a>}
@@ -363,24 +383,24 @@ export function AccountFeedback({ t, snapshot, store }: {
       </div>
     ) : null}
     {snapshot.callbackFeedback === undefined ? null : <p role="status"
-      style={snapshot.callbackFeedback === 'callbackAccepted' || snapshot.callbackFeedback === 'callbackUnconfirmed' ? accountBodyStyle : accountErrorStyle}>
+      style={{ ...(snapshot.callbackFeedback === 'callbackAccepted' || snapshot.callbackFeedback === 'callbackUnconfirmed' ? bodyStyle : errorStyle), marginTop: 8 }}>
       {t(snapshot.callbackFeedback)}
     </p>}
     {status.status === 'error' || status.status === 'reauth-required'
-      ? <p style={accountErrorStyle}>{status.message}</p>
+      ? <p style={{ ...errorStyle, marginTop: 8 }}>{status.message}</p>
       : null}
-    {operationError === undefined ? null : <p style={accountErrorStyle}>{operationError}</p>}
+    {operationError === undefined ? null : <p style={{ ...errorStyle, marginTop: 8 }}>{operationError}</p>}
     {status.status === 'remote-web-origin-not-trusted' ? (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <p style={accountErrorStyle}>{t(desktop ? 'desktopOriginDescription' : 'remoteOriginDescription')}</p>
-        <p style={accountBodyStyle}>{t(desktop ? 'desktopOriginDiagnosticsHelp' : 'remoteOriginCommandHelp')}</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+        <p style={errorStyle}>{t(desktop ? 'desktopOriginDescription' : 'remoteOriginDescription')}</p>
+        <p style={bodyStyle}>{t(desktop ? 'desktopOriginDiagnosticsHelp' : 'remoteOriginCommandHelp')}</p>
         {trustedOriginCommand === undefined ? null : <>
           <code style={commandStyle}>{trustedOriginCommand}</code>
-          <div style={rowStyle}>
-            <button type="button" style={accountButtonStyle} onClick={() => { void copyTrustedOriginCommand() }}>
+          <div style={buttonsStyle}>
+            <button type="button" className="cc-btn" onClick={() => { void copyTrustedOriginCommand() }}>
               {copied ? t('remoteOriginCopied') : t('remoteOriginCopy')}
             </button>
-            {copyFailed ? <span style={accountErrorStyle}>{t('remoteOriginCopyFailed')}</span> : null}
+            {copyFailed ? <span style={errorStyle}>{t('remoteOriginCopyFailed')}</span> : null}
           </div>
         </>}
       </div>

@@ -1,21 +1,18 @@
-/** Model catalog visibility and per-model context budget editor. */
+/** Compact model catalog visibility and per-model context budget card. */
 
 import type { OpenAICodexSettingsConfig } from '../../shared/settings.ts'
 import { isValidOpenAICodexContextBudget, openAICodexContextLimitSource } from '../../shared/models.ts'
 import type { OpenAICodexModelCatalogEntry } from '../../shared/models.ts'
 import type { OpenAICodexTranslate } from './AccountSection.tsx'
 import {
+  badgeStyle,
   bodyStyle,
-  buttonStyle,
   buttonsStyle,
-  controlStyle,
   errorStyle,
   fieldsetStyle,
-  headingStyle,
   labelStyle,
-  modelIdStyle,
-  modelListStyle,
-  modelRowStyle,
+  monoStyle,
+  subPanelStyle,
 } from './styles.ts'
 
 export interface ModelsSectionProps {
@@ -33,6 +30,12 @@ export interface ModelsSectionProps {
     field: Key,
     value: OpenAICodexSettingsConfig[Key],
   ) => void
+}
+
+function formatCompactTokens(tokens: number): string {
+  if (tokens >= 1_000_000 && tokens % 1_000 === 0) return `${(tokens / 1_000_000).toFixed(tokens % 1_000_000 === 0 ? 0 : 2)}M`
+  if (tokens >= 1_000 && tokens % 1_000 === 0) return `${tokens / 1_000}K`
+  return tokens.toLocaleString()
 }
 
 export function ModelsSection({
@@ -56,110 +59,115 @@ export function ModelsSection({
       hidden={!visible}
       style={{ ...fieldsetStyle, display: visible ? fieldsetStyle.display : 'none' }}
     >
-      <div>
-        <h3 style={headingStyle}>{t('modelCatalog')}</h3>
-        <p style={{ ...bodyStyle, marginTop: 4 }}>{t('modelCatalogIntro')}</p>
-      </div>
-      {modelCatalog === undefined && !modelCatalogError ? <p style={bodyStyle} role="status">{t('modelCatalogLoading')}</p> : null}
-      {modelCatalogError ? (
-        <div>
-          <p style={errorStyle} role="alert">{t('modelCatalogFailed')}</p>
-          <button type="button" style={buttonStyle} onClick={onRetryCatalog}>{t('retry')}</button>
+      <div className="cc-card">
+        <div style={{ marginBottom: 10 }}>
+          <h3 className="cc-card-title" style={{ marginBottom: 3 }}>{t('modelCatalog')}</h3>
+          <p style={bodyStyle}>{t('modelCatalogIntro')}</p>
         </div>
-      ) : null}
-      {modelCatalog === undefined ? null : (
-        <div style={modelListStyle} role="group" aria-label={t('modelCatalog')}>
-          {modelCatalog.map(model => {
-            const selected = draft.models === undefined || draft.models.includes(model.id)
-            const budget = draft.contextWindowOverrides?.[model.id]
-            const invalidBudget = budget !== undefined && !isValidOpenAICodexContextBudget(budget, model.maxContextWindow)
-            const effectiveBudget = budget ?? model.contextWindow
-            const changeBudget = (value: number): void => {
-              onUpdate('contextWindowOverrides', { ...draft.contextWindowOverrides, [model.id]: value })
-            }
-            return (
-              <div key={model.id} role="group" aria-label={model.name} style={{ minWidth: 0, padding: '10px 0', borderBottom: '1px solid var(--dsw-alias-border-l2)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                  <label style={{ ...modelRowStyle, minWidth: 0, overflowWrap: 'anywhere' }}>
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      onChange={event => {
-                        const visibleModels = new Set(draft.models ?? modelCatalog.map(entry => entry.id))
-                        if (event.currentTarget.checked) visibleModels.add(model.id)
-                        else visibleModels.delete(model.id)
-                        onUpdate('models', modelCatalog.filter(entry => visibleModels.has(entry.id)).map(entry => entry.id))
-                      }}
-                    />
-                    <span>
-                      <span>{model.name}</span>
-                      {model.name === model.id ? null : <span style={modelIdStyle}> ({model.id})</span>}
-                    </span>
-                  </label>
-                  <div style={{ ...buttonsStyle, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <span style={bodyStyle}>{t('modelContext')}: {invalidBudget ? t('contextCustom') : `${effectiveBudget.toLocaleString()} tokens${budget === undefined ? ` · ${t('contextDefault')}` : ''}`}</span>
-                    <button type="button" style={buttonStyle} aria-expanded={expandedModels[model.id] === true} onClick={() => { onToggleExpand(model.id) }}>
-                      {expandedModels[model.id] === true ? t('contextHide') : t('contextAdjust')}
-                    </button>
-                  </div>
-                </div>
-                {expandedModels[model.id] === true ? (
-                  <div role="group" aria-label={t('contextTokens')} style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                      <span style={labelStyle}>{t('contextTokens')}</span>
+        {modelCatalog === undefined && !modelCatalogError ? <p style={bodyStyle} role="status">{t('modelCatalogLoading')}</p> : null}
+        {modelCatalogError ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+            <p style={errorStyle} role="alert">{t('modelCatalogFailed')}</p>
+            <button type="button" className="cc-btn" onClick={onRetryCatalog}>{t('retry')}</button>
+          </div>
+        ) : null}
+        {modelCatalog === undefined ? null : (
+          <div role="group" aria-label={t('modelCatalog')}>
+            {modelCatalog.map(model => {
+              const selected = draft.models === undefined || draft.models.includes(model.id)
+              const budget = draft.contextWindowOverrides?.[model.id]
+              const invalidBudget = budget !== undefined && !isValidOpenAICodexContextBudget(budget, model.maxContextWindow)
+              const effectiveBudget = budget ?? model.contextWindow
+              const changeBudget = (value: number): void => {
+                onUpdate('contextWindowOverrides', { ...draft.contextWindowOverrides, [model.id]: value })
+              }
+              return (
+                <div key={model.id} role="group" aria-label={model.name} style={{ padding: '8px 0', borderBottom: '0.5px solid var(--dsw-alias-border-l1, var(--dsw-alias-border-l2))' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, minWidth: 0, cursor: 'pointer' }}>
                       <input
-                        type="number"
+                        type="checkbox"
+                        className="cc-switch"
+                        checked={selected}
+                        onChange={event => {
+                          const visibleModels = new Set(draft.models ?? modelCatalog.map(entry => entry.id))
+                          if (event.currentTarget.checked) visibleModels.add(model.id)
+                          else visibleModels.delete(model.id)
+                          onUpdate('models', modelCatalog.filter(entry => visibleModels.has(entry.id)).map(entry => entry.id))
+                        }}
+                      />
+                      <span style={{ display: 'inline-flex', alignItems: 'baseline', flexWrap: 'wrap', gap: 6, minWidth: 0 }}>
+                        <span style={labelStyle}>{model.name}</span>
+                        {model.name === model.id ? null : <span style={monoStyle}>{model.id}</span>}
+                      </span>
+                    </label>
+                    <div style={buttonsStyle}>
+                      <span style={{ ...badgeStyle, fontVariantNumeric: 'tabular-nums' }} title={`${effectiveBudget.toLocaleString()} tokens`}>
+                        {invalidBudget ? t('contextCustom') : `${formatCompactTokens(effectiveBudget)}${budget === undefined ? ` · ${t('contextDefault')}` : ''}`}
+                      </span>
+                      <button type="button" className="cc-btn cc-btn-ghost" aria-expanded={expandedModels[model.id] === true} onClick={() => { onToggleExpand(model.id) }}>
+                        {expandedModels[model.id] === true ? t('contextHide') : t('contextAdjust')}
+                      </button>
+                    </div>
+                  </div>
+                  {expandedModels[model.id] === true ? (
+                    <div role="group" aria-label={t('contextTokens')} style={subPanelStyle}>
+                      <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <span style={labelStyle}>{t('contextTokens')}</span>
+                        <input
+                          type="number"
+                          className="cc-input"
+                          min={1}
+                          step={1}
+                          max={model.maxContextWindow}
+                          style={{ width: 112, flexShrink: 0, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                          value={Number.isNaN(effectiveBudget) ? '' : effectiveBudget}
+                          aria-invalid={invalidBudget}
+                          onChange={event => { changeBudget(event.currentTarget.valueAsNumber) }}
+                        />
+                      </label>
+                      <input
+                        type="range"
                         min={1}
-                        step={1}
                         max={model.maxContextWindow}
-                        style={{ ...controlStyle, width: 112, flexShrink: 0, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                        value={Number.isNaN(effectiveBudget) ? '' : effectiveBudget}
-                        aria-invalid={invalidBudget}
+                        step={1}
+                        aria-label={t('contextSlider')}
+                        aria-valuetext={invalidBudget ? t('contextInvalid') : `${effectiveBudget.toLocaleString()} tokens`}
+                        style={{ width: '100%', height: 18, margin: 0, accentColor: 'var(--dsw-alias-label-primary)' }}
+                        value={invalidBudget ? model.contextWindow : effectiveBudget}
                         onChange={event => { changeBudget(event.currentTarget.valueAsNumber) }}
                       />
-                    </label>
-                    <div style={{ ...bodyStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        {model.contextLimitSource === 'codex-catalog'
-                          ? <a href={openAICodexContextLimitSource(model.id)} target="_blank" rel="noopener noreferrer" title={t('contextLimitSource')} style={{ color: 'inherit', textDecorationStyle: 'dotted', textUnderlineOffset: 3 }}>{t('contextMaximum')}</a>
-                          : <span title={t('contextLimitFallback')}>{t('contextMaximum')}</span>}
-                        <span style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-layer-1))', fontVariantNumeric: 'tabular-nums' }}>{model.maxContextWindow}</span>
-                        <span>tokens</span>
-                      </span>
-                      <button
-                        type="button"
-                        title={`${t('contextDefault')}: ${model.contextWindow.toLocaleString()} tokens`}
-                        style={{ ...bodyStyle, padding: '2px 0', border: 0, background: 'transparent', font: 'inherit', fontSize: 12, cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}
-                        onClick={() => {
-                          const overrides = { ...draft.contextWindowOverrides }
-                          delete overrides[model.id]
-                          onUpdate('contextWindowOverrides', overrides)
-                        }}
-                      >{t('contextReset')}</button>
+                      <div style={{ ...bodyStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          {model.contextLimitSource === 'codex-catalog'
+                            ? <a href={openAICodexContextLimitSource(model.id)} target="_blank" rel="noopener noreferrer" title={t('contextLimitSource')} style={{ color: 'inherit', textDecorationStyle: 'dotted', textUnderlineOffset: 3 }}>{t('contextMaximum')}</a>
+                            : <span title={t('contextLimitFallback')}>{t('contextMaximum')}</span>}
+                          <span style={{ ...badgeStyle, fontVariantNumeric: 'tabular-nums' }}>{model.maxContextWindow.toLocaleString()}</span>
+                        </span>
+                        <button
+                          type="button"
+                          className="cc-btn cc-btn-ghost"
+                          title={`${t('contextDefault')}: ${model.contextWindow.toLocaleString()} tokens`}
+                          onClick={() => {
+                            const overrides = { ...draft.contextWindowOverrides }
+                            delete overrides[model.id]
+                            onUpdate('contextWindowOverrides', overrides)
+                          }}
+                        >{t('contextReset')}</button>
+                      </div>
+                      {budget !== undefined && budget > model.contextWindow && !invalidBudget
+                        ? <p style={bodyStyle} role="status">{t('contextAboveDefault')}</p> : null}
+                      {invalidBudget ? <p style={errorStyle} role="alert">{t('contextInvalid')} (1–{model.maxContextWindow.toLocaleString()})</p> : null}
                     </div>
-                    <input
-                      type="range"
-                      min={1}
-                      max={model.maxContextWindow}
-                      step={1}
-                      aria-label={t('contextSlider')}
-                      aria-valuetext={invalidBudget ? t('contextInvalid') : `${effectiveBudget.toLocaleString()} tokens`}
-                      style={{ width: '100%', height: 20, margin: 0, accentColor: 'var(--dsw-alias-label-secondary)' }}
-                      value={invalidBudget ? model.contextWindow : effectiveBudget}
-                      onChange={event => { changeBudget(event.currentTarget.valueAsNumber) }}
-                    />
-                    {budget !== undefined && budget > model.contextWindow && !invalidBudget
-                      ? <p style={bodyStyle} role="status">{t('contextAboveDefault')}</p> : null}
-                    {invalidBudget ? <p style={errorStyle} role="alert">{t('contextInvalid')} (1–{model.maxContextWindow.toLocaleString()})</p> : null}
-                  </div>
-                ) : null}
-              </div>
-            )
-          })}
-        </div>
-      )}
-      <p style={bodyStyle}>{t('contextWarning')}</p>
-      {!validContexts ? <p style={errorStyle} role="alert">{t('contextInvalid')}</p> : null}
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        )}
+        <p style={{ ...bodyStyle, marginTop: 10 }}>{t('contextWarning')}</p>
+        {!validContexts ? <p style={{ ...errorStyle, marginTop: 6 }} role="alert">{t('contextInvalid')}</p> : null}
+      </div>
     </div>
   )
 }

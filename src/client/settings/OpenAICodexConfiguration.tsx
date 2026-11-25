@@ -7,6 +7,7 @@ import {
   isValidOpenAICodexContextWindowOverrides,
   isValidOpenAICodexImageModelHint,
   isValidOpenAICodexProxyUrl,
+  normalizeOpenAICodexProxyUrl,
 } from '../../shared/settings.ts'
 import {
   decodeOpenAICodexModelCatalog,
@@ -17,20 +18,15 @@ import type { OpenAICodexModelCatalogEntry } from '../../shared/models.ts'
 import { requestJson } from '../shared/request-json.ts'
 import type { OpenAICodexTranslate } from './AccountSection.tsx'
 import { ModelsSection } from './ModelsSection.tsx'
-import { NetworkSection, useProxyConfig } from './NetworkSection.tsx'
+import { useProxyTools } from './NetworkSection.tsx'
 import { CapabilitiesSection } from './CapabilitiesSection.tsx'
 import {
-  actionsStyle,
-  activeLocalModuleTabStyle,
   bodyStyle,
-  buttonStyle,
   buttonsStyle,
   errorStyle,
   fieldsetStyle,
-  localModuleTabStyle,
-  localModuleTabsStyle,
   primaryButtonStyle,
-  sectionStyle,
+  stackStyle,
   successStyle,
 } from './styles.ts'
 
@@ -44,9 +40,9 @@ export interface OpenAICodexConfigurationProps {
 }
 
 /** Modules shared by the Plugin settings page and the Models settings dialog. */
-export type OpenAICodexSettingsModule = 'account' | 'models' | 'network' | 'capabilities'
+export type OpenAICodexSettingsModule = 'account' | 'models' | 'capabilities'
 
-const CONFIGURATION_MODULES = ['models', 'network', 'capabilities'] as const
+const CONFIGURATION_MODULES = ['models', 'capabilities'] as const
 
 const UNAVAILABLE_SNAPSHOT = {
   status: 'unavailable' as const,
@@ -117,8 +113,8 @@ export function OpenAICodexConfiguration({ scope, t, activeModule, panelIdPrefix
   const getSnapshot = useCallback(() => scope?.getSnapshot() ?? UNAVAILABLE_SNAPSHOT, [scope])
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
   const [draft, setDraft] = useState<OpenAICodexSettingsConfig | undefined>(snapshot.value)
-  const baseline = useRef(snapshot.value)
-  const [dirty, setDirty] = useState(false)
+  const [baseline, setBaseline] = useState<OpenAICodexSettingsConfig | undefined>(snapshot.value)
+  const scopeRef = useRef(scope)
   const [busy, setBusy] = useState(false)
   const [feedback, setFeedback] = useState<'idle' | 'saved' | 'error'>('idle')
   const [modelCatalog, setModelCatalog] = useState<OpenAICodexModelCatalogEntry[] | undefined>()
@@ -128,17 +124,19 @@ export function OpenAICodexConfiguration({ scope, t, activeModule, panelIdPrefix
   const localPanelIdPrefix = useId()
   const [catalogAttempt, setCatalogAttempt] = useState(0)
 
-  const proxy = useProxyConfig({
-    scope,
-    draft,
-    accepted: snapshot.value,
-    onStageProxy: proxyUrl => {
-      setDraft(current => current === undefined ? current : { ...current, proxyUrl, enableProxy: true })
-      setDirty(true)
-      setFeedback('idle')
-    },
-    onClearFeedback: () => { setFeedback('idle') },
-  })
+  const dirty = draft !== undefined && baseline !== undefined
+    && CONFIG_FIELDS.some(field => !sameField(field, baseline[field], draft[field]))
+
+  const proxy = useProxyTools({ scope, enableProxy: draft?.enableProxy, proxyUrl: draft?.proxyUrl })
+
+  useEffect(() => {
+    if (scopeRef.current === scope) return
+    scopeRef.current = scope
+    const nextValue = scope?.getSnapshot().value
+    setBaseline(nextValue)
+    setDraft(nextValue)
+    setFeedback('idle')
+  }, [scope])
 
   useEffect(() => {
     if (scope === undefined) return
@@ -165,7 +163,7 @@ export function OpenAICodexConfiguration({ scope, t, activeModule, panelIdPrefix
 
   useEffect(() => {
     if (!dirty && !busy) {
-      baseline.current = snapshot.value
+      setBaseline(snapshot.value)
       setDraft(snapshot.value)
     }
   }, [busy, dirty, snapshot.revision, snapshot.value])
@@ -181,32 +179,44 @@ export function OpenAICodexConfiguration({ scope, t, activeModule, panelIdPrefix
     value: OpenAICodexSettingsConfig[Key],
   ): void => {
     setDraft(current => current === undefined ? current : { ...current, [field]: value })
-    setDirty(true)
+    setFeedback('idle')
+  }
+
+  const toggleFastDefault = (target: 'session' | 'subagent', enabled: boolean): void => {
+    setDraft(current => current === undefined ? current : target === 'session'
+      ? { ...current, enableNewSessionFastMode: enabled, newSessionSpeedMode: undefined }
+      : { ...current, enableNewSubagentFastMode: enabled, newSubagentSpeedMode: undefined })
     setFeedback('idle')
   }
 
   const discard = (): void => {
-    setDraft(scope?.getSnapshot().value)
-    setDirty(false)
+    const latest = scope?.getSnapshot().value
+    setBaseline(latest)
+    setDraft(latest)
     setFeedback('idle')
     proxy.reset()
   }
 
   const validModel = draft !== undefined && draft.searchModel.trim().length > 0
   const validTokens = draft !== undefined && Number.isInteger(draft.searchMaxOutputTokens) && draft.searchMaxOutputTokens > 0
-  const validProxy = draft !== undefined && isValidOpenAICodexProxyUrl(draft.proxyUrl)
+  const validProxy = draft !== undefined && (!draft.enableProxy || isValidOpenAICodexProxyUrl(draft.proxyUrl))
   const validImageModelHint = draft !== undefined && isValidOpenAICodexImageModelHint(draft.imageModelHint)
-  const validContexts = draft !== undefined && validContextEdits(draft.contextWindowOverrides, baseline.current?.contextWindowOverrides, modelCatalog)
-  const valid = validModel && validTokens && validProxy && validImageModelHint && validContexts && proxy.validProxySelection
+  const validContexts = draft !== undefined && validContextEdits(draft.contextWindowOverrides, baseline?.contextWindowOverrides, modelCatalog)
+  const valid = validModel && validTokens && validProxy && validImageModelHint && validContexts
 
   const save = async (): Promise<void> => {
     if (scope === undefined || draft === undefined || !snapshot.writable || !valid) return
-    const desired = { ...draft, searchModel: draft.searchModel.trim() }
+    const normalizedProxy = normalizeOpenAICodexProxyUrl(draft.proxyUrl)
+    const desired: OpenAICodexSettingsConfig = {
+      ...draft,
+      searchModel: draft.searchModel.trim(),
+      proxyUrl: normalizedProxy ?? draft.proxyUrl,
+    }
     setBusy(true)
     setFeedback('idle')
     try {
       const current = scope.getSnapshot()
-      const original = baseline.current
+      const original = baseline
       if (!current.writable || current.status !== 'ready' || ('mode' in current && current.mode === 'memory') || current.value === undefined || original === undefined || current.revision === undefined) {
         throw new Error('Host settings are unavailable')
       }
@@ -226,10 +236,9 @@ export function OpenAICodexConfiguration({ scope, t, activeModule, panelIdPrefix
       if (accepted === undefined || changed.some(field => !sameField(field, accepted[field], desired[field]))) {
         throw new Error('Host refused the configuration change')
       }
+      setBaseline(accepted)
       setDraft(accepted)
-      setDirty(false)
       setFeedback('saved')
-      proxy.clearCurrentProxyCheck()
     } catch {
       setFeedback('error')
     } finally {
@@ -239,9 +248,10 @@ export function OpenAICodexConfiguration({ scope, t, activeModule, panelIdPrefix
 
   const loading = snapshot.status === 'loading'
   const editable = snapshot.status === 'ready' && snapshot.writable && !busy
-  const searchDisabled = !editable || draft?.enableSearch !== true
   const visibleModule = activeModule ?? localModule
   const panelPrefix = panelIdPrefix ?? localPanelIdPrefix
+  const showSaveBar = dirty || feedback !== 'idle'
+  const hideSection = visibleModule === 'account' && !showSaveBar
 
   const selectLocalModule = (module: (typeof CONFIGURATION_MODULES)[number]): void => {
     setLocalModule(module)
@@ -249,35 +259,40 @@ export function OpenAICodexConfiguration({ scope, t, activeModule, panelIdPrefix
   }
 
   return (
-    <section style={{ ...sectionStyle, display: visibleModule === 'account' && !dirty ? 'none' : sectionStyle.display }} aria-label={t('configurationHeading')}>
+    <section
+      style={{ ...stackStyle, display: hideSection ? 'none' : 'flex' }}
+      aria-label={t('configurationHeading')}
+    >
       {loading ? <p style={bodyStyle} role="status">{t('settingsLoading')}</p> : null}
       {snapshot.status === 'unavailable' ? <p style={errorStyle} role="alert">{t('settingsUnavailable')}</p> : null}
       {snapshot.status === 'ready' && !snapshot.writable ? <p style={errorStyle} role="alert">{t('settingsReadOnly')}</p> : null}
       {draft === undefined ? null : (
         <>
           {activeModule === undefined ? (
-            <div style={localModuleTabsStyle} role="tablist" aria-label={t('settingsModules')}>
-              {CONFIGURATION_MODULES.map((module, index) => (
-                <button
-                  key={module}
-                  id={`${panelPrefix}-${module}-tab`}
-                  type="button"
-                  role="tab"
-                  aria-label={t(`${module}Module`)}
-                  aria-selected={localModule === module}
-                  aria-controls={`${panelPrefix}-${module}`}
-                  tabIndex={localModule === module ? 0 : -1}
-                  style={localModule === module ? activeLocalModuleTabStyle : localModuleTabStyle}
-                  onClick={() => { setLocalModule(module) }}
-                  onKeyDown={event => {
-                    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-                    event.preventDefault()
-                    const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? CONFIGURATION_MODULES.length - 1
-                      : (index + (event.key === 'ArrowRight' ? 1 : -1) + CONFIGURATION_MODULES.length) % CONFIGURATION_MODULES.length
-                    selectLocalModule(CONFIGURATION_MODULES[nextIndex]!)
-                  }}
-                >{t(`${module}Module`)}</button>
-              ))}
+            <div className="cc-header" style={{ marginBottom: 4 }}>
+              <div className="cc-tabs" role="tablist" aria-label={t('settingsModules')}>
+                {CONFIGURATION_MODULES.map((module, index) => (
+                  <button
+                    key={module}
+                    id={`${panelPrefix}-${module}-tab`}
+                    type="button"
+                    role="tab"
+                    className="cc-tab"
+                    aria-label={t(`${module}Module`)}
+                    aria-selected={localModule === module}
+                    aria-controls={`${panelPrefix}-${module}`}
+                    tabIndex={localModule === module ? 0 : -1}
+                    onClick={() => { setLocalModule(module) }}
+                    onKeyDown={event => {
+                      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+                      event.preventDefault()
+                      const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? CONFIGURATION_MODULES.length - 1
+                        : (index + (event.key === 'ArrowRight' ? 1 : -1) + CONFIGURATION_MODULES.length) % CONFIGURATION_MODULES.length
+                      selectLocalModule(CONFIGURATION_MODULES[nextIndex]!)
+                    }}
+                  >{t(`${module}Module`)}</button>
+                ))}
+              </div>
             </div>
           ) : null}
           <fieldset style={fieldsetStyle} disabled={!editable}>
@@ -294,51 +309,45 @@ export function OpenAICodexConfiguration({ scope, t, activeModule, panelIdPrefix
               onToggleExpand={modelId => { setExpandedModels(current => ({ ...current, [modelId]: !current[modelId] })) }}
               onUpdate={update}
             />
-            <NetworkSection
-              panelPrefix={panelPrefix}
-              visible={visibleModule === 'network'}
-              draft={draft}
-              proxy={proxy}
-              t={t}
-              onDisableProxy={() => { proxy.clearCurrentProxyCheck(); update('enableProxy', false) }}
-            />
             <CapabilitiesSection
               panelPrefix={panelPrefix}
               visible={visibleModule === 'capabilities'}
               draft={draft}
               savedNativeCompaction={snapshot.status === 'ready' ? snapshot.value?.enableNativeCompaction : undefined}
-              searchDisabled={searchDisabled}
               validModel={validModel}
               validTokens={validTokens}
               validImageModelHint={validImageModelHint}
+              proxy={proxy}
               t={t}
               onUpdate={update}
+              onToggleFastDefault={toggleFastDefault}
             />
           </fieldset>
         </>
       )}
       {visibleModule === 'capabilities' && !validModel && draft !== undefined ? <p style={errorStyle} role="alert">{t('invalidSearchModel')}</p> : null}
       {visibleModule === 'capabilities' && !validTokens && draft !== undefined ? <p style={errorStyle} role="alert">{t('invalidSearchTokens')}</p> : null}
-      {visibleModule === 'network' && !validProxy && draft !== undefined ? <p style={errorStyle} role="alert">{t('invalidProxyUrl')}</p> : null}
       {visibleModule === 'capabilities' && !validImageModelHint && draft !== undefined ? <p style={errorStyle} role="alert">{t('invalidImageModelHint')}</p> : null}
-      {visibleModule === 'capabilities' ? <p style={bodyStyle}>{t('routingNote')}</p> : null}
-      <div style={{ ...actionsStyle, position: 'sticky', bottom: 0, zIndex: 1, padding: '10px 0', background: 'var(--dsw-alias-bg-layer-1, white)' }}>
-        <span aria-live="polite">
-          {feedback === 'saved' ? <span style={successStyle}>{t('settingsSaved')}</span> : null}
-          {feedback === 'error' ? <span style={errorStyle}>{t('settingsSaveFailed')}</span> : null}
-        </span>
-        <span style={buttonsStyle}>
-          <button type="button" style={{ ...buttonStyle, minHeight: 44 }} disabled={(!dirty && !proxy.manualProxyEdited) || busy} onClick={discard}>{t('discard')}</button>
-          <button
-            type="button"
-            style={{ ...primaryButtonStyle, minHeight: 44 }}
-            disabled={!dirty || !valid || !snapshot.writable || busy}
-            onClick={() => { void save() }}
-          >
-            {busy ? t('saving') : t('save')}
-          </button>
-        </span>
-      </div>
+      {showSaveBar ? (
+        <div className="cc-savebar">
+          <span aria-live="polite">
+            {feedback === 'saved' ? <span style={successStyle}>{t('settingsSaved')}</span> : null}
+            {feedback === 'error' ? <span style={errorStyle}>{t('settingsSaveFailed')}</span> : null}
+          </span>
+          <span style={buttonsStyle}>
+            <button type="button" className="cc-btn" disabled={!dirty || busy} onClick={discard}>{t('discard')}</button>
+            <button
+              type="button"
+              className="cc-btn"
+              style={primaryButtonStyle}
+              disabled={!dirty || !valid || !snapshot.writable || busy}
+              onClick={() => { void save() }}
+            >
+              {busy ? t('saving') : t('save')}
+            </button>
+          </span>
+        </div>
+      ) : null}
     </section>
   )
 }

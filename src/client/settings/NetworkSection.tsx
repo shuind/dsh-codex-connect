@@ -1,4 +1,4 @@
-/** Proxy connection state hook, auto-detection, and manual proxy probing UI. */
+/** Compact single-card HTTP(S) proxy configuration with optional scan and probe. */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -11,126 +11,79 @@ import {
 import { requestJson } from '../shared/request-json.ts'
 import type { OpenAICodexTranslate } from './AccountSection.tsx'
 import {
-  actionsStyle,
-  activeProxyTabStyle,
   bodyStyle,
   buttonsStyle,
-  candidateStyle,
-  connectionCardStyle,
-  controlStyle,
   errorStyle,
-  fieldsetStyle,
-  formFieldStyle,
-  headingStyle,
   labelStyle,
-  modelIdStyle,
-  pendingStyle,
-  primaryProxyButtonStyle,
-  proxyButtonStyle,
-  proxyTabStyle,
-  proxyTabsStyle,
-  statePillStyle,
+  monoStyle,
+  rowStyle,
+  subPanelStyle,
   successStyle,
 } from './styles.ts'
 
-export type ProxyDetectionState =
+export type ProxyScanState =
   | { status: 'idle' }
-  | { status: 'detecting' }
-  | { status: 'candidate'; candidates: readonly OpenAICodexProxyProbeResult[] }
-  | { status: 'failed'; results: readonly OpenAICodexProxyProbeResult[] }
-
-export type CurrentProxyCheckState =
-  | { status: 'idle' }
-  | { status: 'checking' }
-  | { status: 'success'; result: OpenAICodexProxyProbeResult }
-  | { status: 'failed'; result?: OpenAICodexProxyProbeResult }
+  | { status: 'scanning' }
+  | { status: 'found'; candidates: readonly OpenAICodexProxyProbeResult[] }
+  | { status: 'empty' }
 
 type ProxyDetectionResponse = {
   candidates: readonly OpenAICodexProxyProbeResult[]
   results: readonly OpenAICodexProxyProbeResult[]
 }
 
-export function useProxyConfig(options: {
+export function useProxyTools(options: {
   scope: ConfigForm<OpenAICodexSettingsConfig> | undefined
-  draft: OpenAICodexSettingsConfig | undefined
-  accepted: OpenAICodexSettingsConfig | undefined
-  onStageProxy: (proxyUrl: string) => void
-  onClearFeedback: () => void
+  enableProxy: boolean | undefined
+  proxyUrl: string | undefined
 }) {
-  const { scope, draft, accepted, onStageProxy, onClearFeedback } = options
-  const [proxyDetection, setProxyDetection] = useState<ProxyDetectionState>({ status: 'idle' })
-  const [proxyMode, setProxyMode] = useState<'auto' | 'manual'>('auto')
-  const [manualProxyUrl, setManualProxyUrl] = useState(accepted?.proxyUrl ?? '')
-  const [manualProxyEdited, setManualProxyEdited] = useState(false)
-  const [manualProbe, setManualProbe] = useState<OpenAICodexProxyProbeResult | undefined>()
-  const [manualProbeBusy, setManualProbeBusy] = useState(false)
-  const [currentProxyCheck, setCurrentProxyCheck] = useState<CurrentProxyCheckState>({ status: 'idle' })
-  const proxyDetectionController = useRef<AbortController | undefined>(undefined)
-  const manualProbeController = useRef<AbortController | undefined>(undefined)
-  const currentProxyCheckController = useRef<AbortController | undefined>(undefined)
-  const proxyDetectionRequest = useRef(0)
-  const manualProbeRequest = useRef(0)
-  const currentProxyCheckRequest = useRef(0)
+  const { scope, enableProxy, proxyUrl } = options
+  const [scan, setScan] = useState<ProxyScanState>({ status: 'idle' })
+  const [probe, setProbe] = useState<OpenAICodexProxyProbeResult | undefined>()
+  const [probeBusy, setProbeBusy] = useState(false)
+  const scanController = useRef<AbortController | undefined>(undefined)
+  const probeController = useRef<AbortController | undefined>(undefined)
+  const scanSeq = useRef(0)
+  const probeSeq = useRef(0)
 
-  const replaceManualProxyInput = useCallback((value: string): void => {
-    manualProbeController.current?.abort()
-    manualProbeRequest.current += 1
-    setManualProbeBusy(false)
-    setManualProbe(undefined)
-    setManualProxyUrl(value)
+  const clearProbe = useCallback((): void => {
+    probeController.current?.abort()
+    probeSeq.current += 1
+    setProbeBusy(false)
+    setProbe(undefined)
   }, [])
 
-  const clearCurrentProxyCheck = useCallback((): void => {
-    currentProxyCheckController.current?.abort()
-    currentProxyCheckRequest.current += 1
-    setCurrentProxyCheck({ status: 'idle' })
-  }, [])
-
-  const savedProxyUrl = accepted?.enableProxy === true ? normalizeOpenAICodexProxyUrl(accepted.proxyUrl) : undefined
-  const draftProxyUrl = draft?.enableProxy === true ? normalizeOpenAICodexProxyUrl(draft.proxyUrl) : undefined
+  const reset = useCallback((): void => {
+    scanController.current?.abort()
+    scanSeq.current += 1
+    setScan({ status: 'idle' })
+    clearProbe()
+  }, [clearProbe])
 
   useEffect(() => {
-    const acceptedUrl = accepted?.proxyUrl ?? ''
-    if (manualProxyEdited && manualProxyUrl === acceptedUrl) setManualProxyEdited(false)
-    if (!manualProxyEdited && manualProxyUrl !== acceptedUrl) replaceManualProxyInput(acceptedUrl)
-  }, [manualProxyEdited, manualProxyUrl, accepted?.proxyUrl, replaceManualProxyInput])
+    if (!enableProxy) reset()
+  }, [enableProxy, reset])
 
   useEffect(() => {
-    setProxyMode('auto')
-    setManualProxyEdited(false)
-    replaceManualProxyInput(scope?.getSnapshot().value?.proxyUrl ?? '')
-    setProxyDetection({ status: 'idle' })
-    setCurrentProxyCheck({ status: 'idle' })
+    clearProbe()
+  }, [proxyUrl, clearProbe])
+
+  useEffect(() => {
+    reset()
     return () => {
-      proxyDetectionController.current?.abort()
-      manualProbeController.current?.abort()
-      currentProxyCheckController.current?.abort()
-      proxyDetectionRequest.current += 1
-      manualProbeRequest.current += 1
-      currentProxyCheckRequest.current += 1
+      scanController.current?.abort()
+      probeController.current?.abort()
+      scanSeq.current += 1
+      probeSeq.current += 1
     }
-  }, [scope, replaceManualProxyInput])
+  }, [scope, reset])
 
-  useEffect(() => {
-    clearCurrentProxyCheck()
-  }, [scope, savedProxyUrl, clearCurrentProxyCheck])
-
-  const reset = (): void => {
-    proxyDetectionController.current?.abort()
-    proxyDetectionRequest.current += 1
-    setProxyDetection({ status: 'idle' })
-    setProxyMode('auto')
-    setManualProxyEdited(false)
-    replaceManualProxyInput(scope?.getSnapshot().value?.proxyUrl ?? '')
-    clearCurrentProxyCheck()
-  }
-
-  const detectProxy = async (): Promise<void> => {
-    proxyDetectionController.current?.abort()
+  const scanLocal = async (): Promise<void> => {
+    scanController.current?.abort()
     const controller = new AbortController()
-    proxyDetectionController.current = controller
-    const request = ++proxyDetectionRequest.current
-    setProxyDetection({ status: 'detecting' })
+    scanController.current = controller
+    const seq = ++scanSeq.current
+    setScan({ status: 'scanning' })
     try {
       const { response, value: payload } = await requestJson(OPENAI_CODEX_PROXY_DETECT_PATH, {
         method: 'POST',
@@ -140,40 +93,22 @@ export function useProxyConfig(options: {
       })
       if (!response.ok) throw new Error(`proxy detection failed: ${String(response.status)}`)
       const value = payload as ProxyDetectionResponse
-      if (!Array.isArray(value.candidates) || !Array.isArray(value.results)) throw new Error('proxy detection response was invalid')
-      if (request !== proxyDetectionRequest.current) return
-      setProxyDetection(value.candidates.length > 0
-        ? { status: 'candidate', candidates: value.candidates }
-        : { status: 'failed', results: value.results })
+      if (!Array.isArray(value.candidates)) throw new Error('invalid proxy detection response')
+      if (seq !== scanSeq.current) return
+      setScan(value.candidates.length > 0 ? { status: 'found', candidates: value.candidates } : { status: 'empty' })
     } catch {
-      if (request === proxyDetectionRequest.current) setProxyDetection({ status: 'failed', results: [] })
+      if (seq === scanSeq.current) setScan({ status: 'empty' })
     }
   }
 
-  const useProxy = (proxyUrl: string): void => {
-    if (draft === undefined) return
-    const normalized = normalizeOpenAICodexProxyUrl(proxyUrl)
+  const testProxy = async (rawUrl: string): Promise<void> => {
+    const normalized = normalizeOpenAICodexProxyUrl(rawUrl)
     if (normalized === undefined) return
-    const detected = proxyDetection.status === 'candidate'
-      ? proxyDetection.candidates.find(candidate => candidate.reachable && candidate.proxyUrl === normalized)
-      : undefined
-    const tested = manualProbe?.reachable === true && manualProbe.proxyUrl === normalized ? manualProbe : detected
-    if (tested === undefined) return
-    onStageProxy(normalized)
-    replaceManualProxyInput(normalized)
-    setManualProxyEdited(true)
-    setManualProbe(tested)
-    clearCurrentProxyCheck()
-  }
-
-  const testManualProxy = async (): Promise<void> => {
-    const normalized = normalizeOpenAICodexProxyUrl(manualProxyUrl)
-    if (normalized === undefined) return
-    manualProbeController.current?.abort()
+    probeController.current?.abort()
     const controller = new AbortController()
-    manualProbeController.current = controller
-    const request = ++manualProbeRequest.current
-    setManualProbeBusy(true)
+    probeController.current = controller
+    const seq = ++probeSeq.current
+    setProbeBusy(true)
     try {
       const path = `${OPENAI_CODEX_PROXY_TEST_PATH}?proxyUrl=${encodeURIComponent(normalized)}`
       const { response, value: payload } = await requestJson(path, {
@@ -184,242 +119,119 @@ export function useProxyConfig(options: {
       })
       if (!response.ok) throw new Error(`proxy test failed: ${String(response.status)}`)
       const result = payload as OpenAICodexProxyProbeResult
-      if (request === manualProbeRequest.current && normalizeOpenAICodexProxyUrl(manualProxyUrl) === normalized) setManualProbe(result)
+      if (seq === probeSeq.current) setProbe(result)
     } catch {
-      if (request === manualProbeRequest.current && normalizeOpenAICodexProxyUrl(manualProxyUrl) === normalized) {
-        setManualProbe({ proxyUrl: normalized, reachable: false, classification: 'connect-failure' })
-      }
+      if (seq === probeSeq.current) setProbe({ proxyUrl: normalized, reachable: false, classification: 'connect-failure' })
     } finally {
-      if (request === manualProbeRequest.current) setManualProbeBusy(false)
+      if (seq === probeSeq.current) setProbeBusy(false)
     }
   }
 
-  const checkCurrentProxy = async (): Promise<void> => {
-    const saved = scope?.getSnapshot().value
-    const normalized = saved?.enableProxy === true ? normalizeOpenAICodexProxyUrl(saved.proxyUrl) : undefined
-    if (normalized === undefined) return
-    currentProxyCheckController.current?.abort()
-    const controller = new AbortController()
-    currentProxyCheckController.current = controller
-    const request = ++currentProxyCheckRequest.current
-    setCurrentProxyCheck({ status: 'checking' })
-    try {
-      const path = `${OPENAI_CODEX_PROXY_TEST_PATH}?proxyUrl=${encodeURIComponent(normalized)}`
-      const { response, value: payload } = await requestJson(path, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { accept: 'application/json' },
-        signal: controller.signal,
-      })
-      if (!response.ok) throw new Error(`proxy test failed: ${String(response.status)}`)
-      const result = payload as OpenAICodexProxyProbeResult
-      const current = scope?.getSnapshot().value
-      if (request !== currentProxyCheckRequest.current || current?.enableProxy !== true || normalizeOpenAICodexProxyUrl(current.proxyUrl) !== normalized) return
-      setCurrentProxyCheck(result.reachable ? { status: 'success', result } : { status: 'failed', result })
-    } catch {
-      const current = scope?.getSnapshot().value
-      if (request === currentProxyCheckRequest.current && current?.enableProxy === true && normalizeOpenAICodexProxyUrl(current.proxyUrl) === normalized) {
-        setCurrentProxyCheck({ status: 'failed' })
-      }
-    }
-  }
-
-  const normalizedManualProxy = normalizeOpenAICodexProxyUrl(manualProxyUrl)
-  const manualProxyEntered = manualProxyUrl.trim().length > 0
-  const testedManualProxy = normalizedManualProxy !== undefined && manualProbe?.reachable === true && manualProbe.proxyUrl === normalizedManualProxy
-  const testedProxy = draft !== undefined && manualProbe?.reachable === true && manualProbe.proxyUrl === normalizeOpenAICodexProxyUrl(draft.proxyUrl)
-  const acceptedProxyUnchanged = draft?.enableProxy === true && accepted?.enableProxy === true
-    && normalizeOpenAICodexProxyUrl(draft.proxyUrl) === normalizeOpenAICodexProxyUrl(accepted.proxyUrl)
-  const validProxySelection = draft?.enableProxy !== true || acceptedProxyUnchanged || testedProxy
-  const proxyDraftChanged = accepted !== undefined && draft !== undefined
-    && (accepted.enableProxy !== draft.enableProxy || normalizeOpenAICodexProxyUrl(accepted.proxyUrl) !== normalizeOpenAICodexProxyUrl(draft.proxyUrl))
-  const manualProxyIsCurrent = normalizedManualProxy !== undefined && savedProxyUrl === normalizedManualProxy
-  const manualProxyIsSelected = !manualProxyIsCurrent && normalizedManualProxy !== undefined && draftProxyUrl === normalizedManualProxy
-
-  return {
-    proxyMode,
-    setProxyMode,
-    proxyDetection,
-    currentProxyCheck,
-    savedProxyUrl,
-    draftProxyUrl,
-    proxyDraftChanged,
-    manualProxyUrl,
-    manualProxyEdited,
-    manualProxyEntered,
-    normalizedManualProxy,
-    manualProbe,
-    manualProbeBusy,
-    testedManualProxy,
-    manualProxyIsCurrent,
-    manualProxyIsSelected,
-    validProxySelection,
-    reset,
-    clearCurrentProxyCheck,
-    detectProxy,
-    useProxy,
-    testManualProxy,
-    checkCurrentProxy,
-    handleManualProxyInput: (value: string): void => {
-      setManualProxyEdited(true)
-      replaceManualProxyInput(value)
-      onClearFeedback()
-    },
-  }
+  return { scan, probe, probeBusy, scanLocal, testProxy, clearProbe, reset }
 }
 
-export type ProxyConfigState = ReturnType<typeof useProxyConfig>
+export type ProxyToolsState = ReturnType<typeof useProxyTools>
 
-export interface NetworkSectionProps {
-  panelPrefix: string
-  visible: boolean
+export interface ProxyCardProps {
   draft: OpenAICodexSettingsConfig
-  proxy: ProxyConfigState
+  proxy: ProxyToolsState
   t: OpenAICodexTranslate
-  onDisableProxy: () => void
+  onUpdate: <Key extends keyof OpenAICodexSettingsConfig>(
+    field: Key,
+    value: OpenAICodexSettingsConfig[Key],
+  ) => void
 }
 
-export function NetworkSection({ panelPrefix, visible, draft, proxy, t, onDisableProxy }: NetworkSectionProps) {
+/** Single-card dedicated proxy toggle with inline URL input, local scan, and probe. */
+export function ProxyCard({ draft, proxy, t, onUpdate }: ProxyCardProps) {
+  const normalized = normalizeOpenAICodexProxyUrl(draft.proxyUrl)
+  const invalidUrl = draft.enableProxy && normalized === undefined
+
   return (
-    <div
-      id={`${panelPrefix}-network`}
-      role="tabpanel"
-      aria-labelledby={`${panelPrefix}-network-tab`}
-      hidden={!visible}
-      style={{ ...fieldsetStyle, display: visible ? fieldsetStyle.display : 'none' }}
-    >
-      <div style={{ paddingTop: 4 }}>
-        <h3 style={headingStyle}>{t('networkHeading')}</h3>
-        <p style={{ ...bodyStyle, marginTop: 4 }}>{t('networkIntro')}</p>
-      </div>
-      <div style={fieldsetStyle} role="group" aria-label={t('currentConnection')}>
-        <h4 style={headingStyle}>{t('currentConnection')}</h4>
-        <div style={connectionCardStyle}>
-          <div style={{ minWidth: 0 }}>
-            <p style={labelStyle}>{proxy.savedProxyUrl === undefined ? t('directConnection') : t('proxyEnabled')}</p>
-            <p style={{ ...modelIdStyle, marginTop: 3, overflowWrap: 'anywhere' }}>
-              {proxy.savedProxyUrl ?? t('directConnectionDescription')}
-            </p>
-            {proxy.currentProxyCheck.status === 'checking' ? <p style={{ ...bodyStyle, marginTop: 5 }} role="status">{t('checkingCurrentConnection')}</p> : null}
-            {proxy.currentProxyCheck.status === 'success' ? <p style={{ ...successStyle, marginTop: 5 }} role="status">{t('currentConnectionHealthy')}</p> : null}
-            {proxy.currentProxyCheck.status === 'failed' ? <p style={{ ...errorStyle, marginTop: 5 }} role="status">{t('currentConnectionFailed')}</p> : null}
-          </div>
-          {proxy.savedProxyUrl === undefined ? null : (
-            <div style={{ ...buttonsStyle, flexWrap: 'wrap' }}>
-              <button type="button" style={proxyButtonStyle} disabled={proxy.currentProxyCheck.status === 'checking'} onClick={() => { void proxy.checkCurrentProxy() }}>
-                {proxy.currentProxyCheck.status === 'checking' ? t('checkingCurrentConnectionButton') : t('checkCurrentConnection')}
+    <div className="cc-card" role="group" aria-label={t('networkHeading')}>
+      <h3 className="cc-card-title">{t('networkHeading')}</h3>
+      <label className="cc-row" style={{ cursor: 'pointer', borderBottom: 0, paddingBottom: 0 }}>
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+          <span style={labelStyle}>{t('enableProxy')}</span>
+          <span style={bodyStyle}>{t('enableProxyHelp')}</span>
+        </span>
+        <input
+          type="checkbox"
+          className="cc-switch"
+          checked={draft.enableProxy}
+          onChange={event => {
+            onUpdate('enableProxy', event.currentTarget.checked)
+            if (!event.currentTarget.checked) proxy.reset()
+          }}
+        />
+      </label>
+      {draft.enableProxy ? (
+        <div style={subPanelStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              className="cc-input"
+              style={{ flex: '1 1 220px', minWidth: 0 }}
+              aria-label={t('proxyAddress')}
+              placeholder="http://127.0.0.1:7890"
+              value={draft.proxyUrl}
+              aria-invalid={invalidUrl}
+              onChange={event => { onUpdate('proxyUrl', event.currentTarget.value) }}
+            />
+            <div style={buttonsStyle}>
+              <button
+                type="button"
+                className="cc-btn"
+                disabled={proxy.scan.status === 'scanning'}
+                onClick={() => { void proxy.scanLocal() }}
+              >
+                {proxy.scan.status === 'scanning' ? t('detectingProxy') : t('scanLocalProxy')}
               </button>
               <button
                 type="button"
-                style={{ ...proxyButtonStyle, borderColor: 'transparent', background: 'transparent', color: 'var(--dsw-alias-state-error-primary)' }}
-                onClick={onDisableProxy}
-              >{t('disableProxy')}</button>
+                className="cc-btn"
+                disabled={normalized === undefined || proxy.probeBusy}
+                onClick={() => { void proxy.testProxy(draft.proxyUrl) }}
+              >
+                {proxy.probeBusy ? t('testingProxy') : t('testProxy')}
+              </button>
             </div>
-          )}
-        </div>
-      </div>
-      <div style={fieldsetStyle}>
-        <h4 style={headingStyle}>{t('changeConnection')}</h4>
-        <div style={proxyTabsStyle} role="tablist" aria-label={t('proxyConfigurationMethod')}>
-          {(['auto', 'manual'] as const).map(mode => (
-            <button
-              key={mode}
-              type="button"
-              role="tab"
-              aria-selected={proxy.proxyMode === mode}
-              aria-controls={`openai-codex-proxy-${mode}`}
-              tabIndex={proxy.proxyMode === mode ? 0 : -1}
-              style={proxy.proxyMode === mode ? activeProxyTabStyle : proxyTabStyle}
-              onClick={() => { proxy.setProxyMode(mode) }}
-              onKeyDown={event => {
-                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-                event.preventDefault()
-                const next = event.key === 'ArrowRight' || event.key === 'End' ? 'manual' : 'auto'
-                proxy.setProxyMode(next)
-                document.getElementById(`openai-codex-proxy-${next}-tab`)?.focus()
-              }}
-              id={`openai-codex-proxy-${mode}-tab`}
-            >{mode === 'auto' ? t('automaticDetection') : t('manualEntry')}</button>
-          ))}
-        </div>
-        <div
-          id="openai-codex-proxy-auto"
-          role="tabpanel"
-          aria-labelledby="openai-codex-proxy-auto-tab"
-          hidden={proxy.proxyMode !== 'auto'}
-          style={{ ...fieldsetStyle, display: proxy.proxyMode === 'auto' ? fieldsetStyle.display : 'none' }}
-        >
-          <div style={actionsStyle}>
-            <p style={bodyStyle}>{t('automaticDetectionHelp')}</p>
-            <button type="button" style={proxyButtonStyle} onClick={() => { void proxy.detectProxy() }} disabled={proxy.proxyDetection.status === 'detecting'}>
-              {proxy.proxyDetection.status === 'detecting' ? t('detectingProxy') : t('scanLocalProxy')}
-            </button>
           </div>
-          {proxy.proxyDetection.status === 'candidate' ? (
-            <div style={fieldsetStyle} role="status">
-              <p style={bodyStyle}>{t('proxyCandidatesFound')}</p>
-              {proxy.proxyDetection.candidates.map(candidate => {
-                const normalized = normalizeOpenAICodexProxyUrl(candidate.proxyUrl)
-                const current = normalized !== undefined && proxy.savedProxyUrl === normalized
-                const selected = !current && normalized !== undefined && proxy.draftProxyUrl === normalized
+          {invalidUrl ? <p style={errorStyle} role="alert">{t('invalidProxyUrl')}</p> : null}
+          {proxy.probe === undefined ? null : (
+            <p style={proxy.probe.reachable ? successStyle : errorStyle} role="status">
+              {proxy.probe.reachable
+                ? t('proxyTestSucceeded', { status: proxy.probe.status ?? proxy.probe.classification })
+                : t('proxyTestFailed', { reason: proxy.probe.classification })}
+            </p>
+          )}
+          {proxy.scan.status === 'found' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} role="status">
+              <span style={bodyStyle}>{t('proxyCandidatesFound')}</span>
+              {proxy.scan.candidates.map(candidate => {
+                const selected = normalized !== undefined && normalized === normalizeOpenAICodexProxyUrl(candidate.proxyUrl)
                 return (
-                  <div key={candidate.proxyUrl} style={candidateStyle}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-                      <code style={{ ...modelIdStyle, overflowWrap: 'anywhere' }}>{candidate.proxyUrl}</code>
+                  <div key={candidate.proxyUrl} style={{ ...rowStyle, padding: '6px 8px', borderRadius: 6, background: 'var(--dsw-alias-bg-layer-1)' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                      <code style={{ ...monoStyle, overflowWrap: 'anywhere' }}>{candidate.proxyUrl}</code>
                       <span style={successStyle}>{t('proxyCandidateHealthy')}</span>
-                    </div>
-                    {current || selected
-                      ? <span style={statePillStyle}>{current ? t('currentProxy') : t('selectedProxy')}</span>
-                      : <button type="button" style={primaryProxyButtonStyle} onClick={() => { proxy.useProxy(candidate.proxyUrl) }}>{t('useThisProxy')}</button>}
+                    </span>
+                    <button
+                      type="button"
+                      className="cc-btn"
+                      disabled={selected}
+                      onClick={() => { onUpdate('proxyUrl', candidate.proxyUrl) }}
+                    >
+                      {selected ? t('selectedProxy') : t('useThisProxy')}
+                    </button>
                   </div>
                 )
               })}
             </div>
           ) : null}
-          {proxy.proxyDetection.status === 'failed' ? (
-            <div style={candidateStyle} role="alert">
-              <div>
-                <p style={errorStyle}>{t('proxyDetectionFailedTitle')}</p>
-                <p style={{ ...bodyStyle, marginTop: 3 }}>{t('proxyDetectionFailed')}</p>
-              </div>
-            </div>
-          ) : null}
+          {proxy.scan.status === 'empty' ? <p style={errorStyle} role="alert">{t('proxyDetectionFailed')}</p> : null}
         </div>
-        <div
-          id="openai-codex-proxy-manual"
-          role="tabpanel"
-          aria-labelledby="openai-codex-proxy-manual-tab"
-          hidden={proxy.proxyMode !== 'manual'}
-          style={{ ...fieldsetStyle, display: proxy.proxyMode === 'manual' ? fieldsetStyle.display : 'none' }}
-        >
-          <p style={bodyStyle}>{t('manualProxyHelp')}</p>
-          <label style={formFieldStyle}>
-            <span style={labelStyle}>{t('proxyAddress')}</span>
-            <input
-              style={{ ...controlStyle, minHeight: 44 }}
-              value={proxy.manualProxyUrl}
-              aria-invalid={proxy.manualProxyEntered && proxy.normalizedManualProxy === undefined}
-              onChange={event => { proxy.handleManualProxyInput(event.currentTarget.value) }}
-            />
-          </label>
-          <div style={{ ...buttonsStyle, flexWrap: 'wrap' }}>
-            <button type="button" style={proxyButtonStyle} disabled={proxy.normalizedManualProxy === undefined || proxy.manualProbeBusy} onClick={() => { void proxy.testManualProxy() }}>
-              {proxy.manualProbeBusy ? t('testingProxy') : t('testProxy')}
-            </button>
-            {proxy.manualProxyIsCurrent || proxy.manualProxyIsSelected
-              ? <span style={statePillStyle}>{proxy.manualProxyIsCurrent ? t('currentProxy') : t('selectedProxy')}</span>
-              : <button type="button" style={primaryProxyButtonStyle} disabled={!proxy.testedManualProxy} onClick={() => { proxy.useProxy(proxy.manualProxyUrl) }}>{t('useThisProxy')}</button>}
-          </div>
-          {proxy.manualProbe === undefined ? null : (
-            <p style={proxy.manualProbe.reachable ? successStyle : errorStyle} role="status">
-              {proxy.manualProbe.reachable ? t('proxyTestSucceeded', { status: proxy.manualProbe.status ?? proxy.manualProbe.classification }) : t('proxyTestFailed', { reason: proxy.manualProbe.classification })}
-            </p>
-          )}
-          {proxy.manualProxyEntered && proxy.normalizedManualProxy === undefined ? <p style={errorStyle} role="alert">{t('invalidProxyUrl')}</p> : null}
-          {proxy.normalizedManualProxy !== undefined && !proxy.manualProxyIsCurrent && !proxy.manualProxyIsSelected && !proxy.testedManualProxy ? <p style={bodyStyle}>{t('proxyTestRequired')}</p> : null}
-        </div>
-      </div>
-      {proxy.proxyDraftChanged ? <p style={pendingStyle} role="status">{draft.enableProxy ? t('pendingProxy', { proxyUrl: draft.proxyUrl }) : t('pendingDirect')}</p> : null}
+      ) : null}
     </div>
   )
 }

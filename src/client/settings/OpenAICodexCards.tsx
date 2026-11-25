@@ -1,7 +1,6 @@
 /** Settings entry cards contributed to Plugins tab, Bundle page, and Models footer. */
 
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
-import type { CSSProperties } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
@@ -9,6 +8,7 @@ import { OpenAICodexSettings } from './OpenAICodexSettings.tsx'
 import type { OpenAICodexSettingsInjected } from './OpenAICodexSettings.tsx'
 import { AccountFeedback, AccountManager, accountStatusLabel, dotStyle, UsageLimits } from './AccountSection.tsx'
 import { OpenAICodexConfiguration } from './OpenAICodexConfiguration.tsx'
+import { bodyStyle, CODEX_CONNECT_SETTINGS_CSS } from './styles.ts'
 
 /** Dependencies injected by the browser-plugin registration. */
 export type OpenAICodexPluginCardInjected = OpenAICodexSettingsInjected
@@ -22,9 +22,6 @@ export type OpenAICodexBundleConfigProps = PropsRuntime<'plugins.bundle.config'>
 /** Dependencies injected into the compact Models account card. */
 export type OpenAICodexModelsCardInjected = Required<Pick<OpenAICodexSettingsInjected, 't' | 'account'>>
   & Pick<Partial<OpenAICodexSettingsInjected>, 'configScope'>
-
-const dialogButtonStyle: CSSProperties = { padding: '6px 14px', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 999, background: 'transparent', color: 'inherit', font: 'inherit', fontSize: 14, cursor: 'pointer' }
-const secondaryStyle: CSSProperties = { fontSize: 12, lineHeight: '18px', color: 'var(--dsw-alias-label-secondary)' }
 
 /** Render the complete Codex Connect settings page in its dedicated Plugins tab. */
 export function OpenAICodexPluginCard({ t, configScope, updater, account }: OpenAICodexPluginCardProps) {
@@ -62,7 +59,7 @@ function ConfigurationDialog({ t, configScope, onClose }: Pick<OpenAICodexModels
     dialog.current?.close()
     onClose()
   }
-  return <dialog ref={dialog} aria-labelledby={titleId}
+  return <dialog ref={dialog} className="cc-root" aria-labelledby={titleId}
     onCancel={event => { event.preventDefault(); close() }}
     onKeyDown={event => {
       if (event.key === 'Escape') {
@@ -85,12 +82,13 @@ function ConfigurationDialog({ t, configScope, onClose }: Pick<OpenAICodexModels
         first.focus()
       }
     }}
-    style={{ boxSizing: 'border-box', width: 'min(720px, calc(100vw - 32px))', maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto', padding: 20, border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 12, background: 'var(--dsw-alias-bg-layer-1, white)', color: 'var(--dsw-alias-label-primary)', margin: 'auto' }}>
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-      <h2 id={titleId} style={{ margin: 0, fontSize: 18 }}>{t('moreSettingsTitle')}</h2>
-      <button type="button" style={dialogButtonStyle} onClick={close}>{t('closeSettings')}</button>
+    style={{ boxSizing: 'border-box', width: 'min(720px, calc(100vw - 32px))', maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto', padding: 18, border: '0.5px solid var(--dsw-alias-border-l2)', borderRadius: 12, background: 'var(--dsw-alias-bg-layer-1, var(--dsw-alias-bg-base))', color: 'var(--dsw-alias-label-primary)', margin: 'auto' }}>
+    <style>{CODEX_CONNECT_SETTINGS_CSS}</style>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
+      <h2 id={titleId} style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>{t('moreSettingsTitle')}</h2>
+      <button type="button" className="cc-btn" onClick={close}>{t('closeSettings')}</button>
     </div>
-    <p style={secondaryStyle}>{t('settingsSaveHint')}</p>
+    <p style={{ ...bodyStyle, marginBottom: 10 }}>{t('settingsSaveHint')}</p>
     <OpenAICodexConfiguration
       t={t}
       {...configScope === undefined ? {} : { scope: configScope }}
@@ -106,23 +104,24 @@ export function OpenAICodexModelsCard({ t, account, configScope }: OpenAICodexMo
   const { status } = snapshot
   const label = accountStatusLabel(status.status, t)
   useEffect(() => { if (status.status !== 'signed-in') setExpanded(false) }, [status.status])
-  return <div style={{ border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 12, padding: '12px 14px', color: 'var(--dsw-alias-label-primary)' }}>
-    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-      <span style={{ fontSize: 14, lineHeight: '22px', fontWeight: 500 }}>{t('modelsProviderName')}</span>
-      <span aria-hidden="true" style={{ ...dotStyle(status.status), width: 8, height: 8 }} />
-      <span role="status" style={{ ...secondaryStyle, flex: 1 }}>{label}</span>
+  return <div className="cc-root cc-card" style={{ padding: '12px 14px' }}>
+    <style>{CODEX_CONNECT_SETTINGS_CSS}</style>
+    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+      <span style={{ fontSize: 13.5, lineHeight: '20px', fontWeight: 500 }}>{t('modelsProviderName')}</span>
+      <span aria-hidden="true" style={dotStyle(status.status)} />
+      <span role="status" style={{ ...bodyStyle, flex: 1 }}>{label}</span>
     </div>
-    <div style={{ ...secondaryStyle, marginTop: 4 }}>{t('modelsProviderSupport')}</div>
-    <div style={{ marginTop: 12 }}>
+    <div style={{ ...bodyStyle, marginTop: 3 }}>{t('modelsProviderSupport')}</div>
+    <div style={{ marginTop: 10 }}>
       <AccountManager t={t} store={account} snapshot={snapshot} compact quotaExpanded={expanded} quotaControlsId={detailsId} onToggleQuota={() => { setExpanded(!expanded) }} />
     </div>
     <AccountFeedback t={t} snapshot={snapshot} store={account} />
-    {expanded && status.status === 'signed-in' && <div id={detailsId} style={{ borderTop: '1px solid var(--dsw-alias-border-l2)', marginTop: 12, paddingTop: 12 }}>
+    {expanded && status.status === 'signed-in' && <div id={detailsId} style={{ borderTop: '0.5px solid var(--dsw-alias-border-l2)', marginTop: 10, paddingTop: 10 }}>
       <UsageLimits t={t} usage={status.usage} heading={false} {...status.quotaError === undefined ? {} : { quotaError: status.quotaError }} />
     </div>}
-    <div style={{ ...secondaryStyle, marginTop: 12 }}>
+    <div style={{ ...bodyStyle, marginTop: 10 }}>
       <span>{t('modelsAccountHelp')}</span>{' '}
-      <button type="button" onClick={() => { setSettingsOpen(true) }} style={{ ...dialogButtonStyle, padding: 0, border: 0, fontSize: 'inherit', textDecoration: 'underline' }}>{t('moreSettings')}</button>
+      <button type="button" onClick={() => { setSettingsOpen(true) }} style={{ padding: 0, border: 0, background: 'transparent', color: 'inherit', font: 'inherit', textDecoration: 'underline', cursor: 'pointer' }}>{t('moreSettings')}</button>
     </div>
     {settingsOpen && <ConfigurationDialog
       t={t}
