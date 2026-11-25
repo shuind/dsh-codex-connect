@@ -304,7 +304,7 @@ export function createOpenAICodexAdapter(
     resolveApiKey: async () => {
       const operation = async () => {
         const auth = await readOpenAICodexRequestAuth(credentials)
-        recordSpeedRequestAccount(auth.accountId)
+        recordSpeedRequestAccount(auth.accountKey)
         return auth.access
       }
       return proxyManager?.run(resolveProxyUrl?.(), operation) ?? operation()

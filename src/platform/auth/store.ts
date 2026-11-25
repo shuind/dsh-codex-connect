@@ -10,6 +10,7 @@ import type { Credential, CredentialInfo, CredentialStore, OAuthCredential } fro
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import {
+  openAICodexCredentialIdentity,
   resolveOpenAICodexAccountProfiles,
   type OpenAICodexAccountProfileSource,
 } from './account-profile.ts'
@@ -32,6 +33,8 @@ export const OPENAI_CODEX_AUTH_DOCUMENT_LIMIT = 512 * 1024
 /** Suffix used for the one-time version-1 rollback copy. */
 export const OPENAI_CODEX_AUTH_V1_BACKUP_SUFFIX = '.v1-backup'
 
+const ACCOUNT_KEY_PATTERN = /^acct_[A-Za-z0-9_-]{43}$/u
+
 type StoredOAuthCredential = OAuthCredential & { accountId: string }
 
 interface AuthDocumentV1 {
@@ -42,6 +45,7 @@ interface AuthDocumentV1 {
 interface AuthDocumentV2 {
   version: typeof AUTH_FORMAT_VERSION
   activeAccountId: string
+  activeAccountKey?: string
   credentials: StoredOAuthCredential[]
 }
 
@@ -61,26 +65,38 @@ export interface CapturedOpenAICodexAccount extends CredentialStore {
   captureActiveAccount(): Promise<CapturedOpenAICodexAccount>
 }
 
+export function openAICodexAccountKey(identity: string): string {
+  return `acct_${createHash('sha256').update(identity).digest('base64url')}`
+}
+
+/** Compute the browser-safe unique key for one stored credential (workspace + user). */
+export function openAICodexCredentialKey(
+  credential: Pick<StoredOAuthCredential, 'accountId' | 'access'>,
+): string {
+  return openAICodexAccountKey(openAICodexCredentialIdentity(credential))
+}
+
 function accountSummaries(document: AuthDocument | undefined): readonly OpenAICodexAccountSummary[] {
   if (document === undefined) return []
   const credentials = documentCredentials(document)
   const profiles = resolveOpenAICodexAccountProfiles(credentials)
-  const activeAccountId = activeCredential(document).accountId
-  return credentials.map((credential, index) => ({
-    accountKey: accountKey(credential.accountId),
-    displayName: profiles[index]!.displayName,
-    ...(profiles[index]!.maskedEmail === undefined ? {} : { maskedEmail: profiles[index]!.maskedEmail }),
-    profileSource: profiles[index]!.source,
-    active: credential.accountId === activeAccountId,
-  }))
+  const activeKey = openAICodexCredentialKey(activeCredential(document))
+  return credentials.map((credential, index) => {
+    const key = openAICodexCredentialKey(credential)
+    return {
+      accountKey: key,
+      displayName: profiles[index]!.displayName,
+      ...(profiles[index]!.maskedEmail === undefined ? {} : { maskedEmail: profiles[index]!.maskedEmail }),
+      profileSource: profiles[index]!.source,
+      active: key === activeKey,
+    }
+  })
 }
 
-/** Whether a filesystem error reports an absent path. */
 function isENOENT(error: unknown): boolean {
   return (error as NodeJS.ErrnoException | null)?.code === 'ENOENT'
 }
 
-/** Reject a credential document readable by another POSIX user. */
 function assertOwnerOnly(filename: string, mode: number): void {
   /* v8 ignore next -- native Windows coverage takes the mode-less branch */
   if (process.platform === 'win32') return
@@ -136,11 +152,15 @@ function parseDocument(text: string, filename: string): AuthDocument {
   if (document['version'] !== AUTH_FORMAT_VERSION) {
     throw new Error(`openai-codex: ${filename} has unsupported auth format version ${String(document['version'])}`)
   }
-  if (Object.keys(document).some(key => !['version', 'activeAccountId', 'credentials'].includes(key))) {
+  if (Object.keys(document).some(key => !['version', 'activeAccountId', 'activeAccountKey', 'credentials'].includes(key))) {
     throw new Error(`openai-codex: ${filename} contains an unknown top-level field`)
   }
   if (typeof document['activeAccountId'] !== 'string' || document['activeAccountId'].length === 0) {
     throw new Error(`openai-codex: ${filename} activeAccountId must be a non-empty string`)
+  }
+  const rawActiveKey = document['activeAccountKey']
+  if (rawActiveKey !== undefined && (typeof rawActiveKey !== 'string' || !ACCOUNT_KEY_PATTERN.test(rawActiveKey))) {
+    throw new Error(`openai-codex: ${filename} activeAccountKey is invalid`)
   }
   if (!Array.isArray(document['credentials']) || document['credentials'].length === 0) {
     throw new Error(`openai-codex: ${filename} credentials must be a non-empty array`)
@@ -149,21 +169,29 @@ function parseDocument(text: string, filename: string): AuthDocument {
     throw new Error(`openai-codex: ${filename} exceeds the ${String(OPENAI_CODEX_ACCOUNT_LIMIT)} account limit`)
   }
   const credentials = document['credentials'].map(raw => parseCredential(raw, filename))
-  const accountIds = new Set(credentials.map(credential => credential.accountId))
-  if (accountIds.size !== credentials.length) {
-    throw new Error(`openai-codex: ${filename} contains duplicate accountId values`)
+  const keys = credentials.map(openAICodexCredentialKey)
+  if (new Set(keys).size !== credentials.length) {
+    throw new Error(`openai-codex: ${filename} contains duplicate account identities`)
   }
-  if (!accountIds.has(document['activeAccountId'])) {
-    throw new Error(`openai-codex: ${filename} activeAccountId does not identify a stored credential`)
+  if (rawActiveKey !== undefined) {
+    const active = credentials.find((credential, index) => keys[index] === rawActiveKey)
+    if (active === undefined || active.accountId !== document['activeAccountId']) {
+      throw new Error(`openai-codex: ${filename} activeAccountKey does not identify a stored credential`)
+    }
+  } else {
+    const matches = credentials.filter(credential => credential.accountId === document['activeAccountId'])
+    if (matches.length !== 1) {
+      throw new Error(`openai-codex: ${filename} activeAccountId does not uniquely identify a stored credential`)
+    }
   }
   return {
     version: AUTH_FORMAT_VERSION,
     activeAccountId: document['activeAccountId'],
+    ...(rawActiveKey === undefined ? {} : { activeAccountKey: rawActiveKey }),
     credentials,
   }
 }
 
-/** Detach a credential from callers that may mutate provider-owned extras. */
 function cloneCredential<T extends OAuthCredential>(credential: T): T {
   return structuredClone(credential)
 }
@@ -174,15 +202,21 @@ function documentCredentials(document: AuthDocument): readonly StoredOAuthCreden
 
 function activeCredential(document: AuthDocument): StoredOAuthCredential {
   if (document.version === 1) return document.credential
-  const active = document.credentials.find(credential => credential.accountId === document.activeAccountId)
+  const active = document.activeAccountKey !== undefined
+    ? document.credentials.find(credential => openAICodexCredentialKey(credential) === document.activeAccountKey)
+    : document.credentials.find(credential => credential.accountId === document.activeAccountId)
   if (active === undefined) throw new Error('openai-codex: active credential invariant failed')
   return active
 }
 
-export function openAICodexAccountKey(accountId: string): string {
-  return `acct_${createHash('sha256').update(accountId).digest('base64url')}`
+function makeV2Document(active: StoredOAuthCredential, credentials: readonly StoredOAuthCredential[]): AuthDocumentV2 {
+  return {
+    version: AUTH_FORMAT_VERSION,
+    activeAccountId: active.accountId,
+    activeAccountKey: openAICodexCredentialKey(active),
+    credentials: credentials.map(cloneCredential),
+  }
 }
-const accountKey = openAICodexAccountKey
 
 function serializeDocument(document: AuthDocument): string {
   const text = `${JSON.stringify(document, null, 2)}\n`
@@ -192,11 +226,7 @@ function serializeDocument(document: AuthDocument): string {
   return text
 }
 
-/**
- * Resolve the default OAuth document path.
- * @param dshHome - optional Harness-home override.
- * @returns the absolute owner-only document path.
- */
+/** Resolve the default OAuth document path under `$DSH_HOME`. */
 export function openAICodexAuthPath(dshHome?: string): string {
   return resolve(join(resolveDshHome(dshHome), OPENAI_CODEX_AUTH_FILENAME))
 }
@@ -209,15 +239,11 @@ export class OpenAICodexCredentialStore implements CredentialStore {
   /** Owner-only version-1 rollback copy, created at the first migration write. */
   readonly version1BackupFilename: string
 
-  /**
-   * @param filename - explicit document path, defaulting under `$DSH_HOME`.
-   */
   constructor(filename: string = openAICodexAuthPath()) {
     this.filename = resolve(filename)
     this.version1BackupFilename = join(dirname(this.filename), `${basename(this.filename)}${OPENAI_CODEX_AUTH_V1_BACKUP_SUFFIX}`)
   }
 
-  /** Read and validate the current document without acquiring the writer lock. */
   private async readDocument(): Promise<AuthDocument | undefined> {
     return this.readDocumentAt(this.filename)
   }
@@ -275,7 +301,7 @@ export class OpenAICodexCredentialStore implements CredentialStore {
   async captureActiveAccount(): Promise<CapturedOpenAICodexAccount> {
     const document = await this.readDocument()
     const captured = document === undefined ? undefined : cloneCredential(activeCredential(document))
-    const capturedAccountId = captured?.accountId
+    const capturedKey = captured === undefined ? undefined : openAICodexCredentialKey(captured)
     let requestCredential: StoredOAuthCredential | undefined = captured
     const snapshot: CapturedOpenAICodexAccount = {
       accounts: async () => accountSummaries(document),
@@ -291,8 +317,8 @@ export class OpenAICodexCredentialStore implements CredentialStore {
         if (providerId !== OPENAI_CODEX_PROVIDER) {
           throw new Error(`openai-codex: captured credential store does not own provider "${providerId}"`)
         }
-        if (capturedAccountId === undefined) return undefined
-        requestCredential = await this.modifyCapturedAccount(capturedAccountId, fn, options)
+        if (capturedKey === undefined) return undefined
+        requestCredential = await this.modifyCapturedAccount(capturedKey, fn, options)
         return requestCredential === undefined ? undefined : cloneCredential(requestCredential)
       },
       delete: async providerId => {
@@ -305,7 +331,7 @@ export class OpenAICodexCredentialStore implements CredentialStore {
   }
 
   private async modifyCapturedAccount(
-    capturedAccountId: string,
+    capturedKey: string,
     fn: (current: Credential | undefined) => Promise<Credential | undefined>,
     options?: Parameters<CredentialStore['modify']>[2],
   ): Promise<StoredOAuthCredential | undefined> {
@@ -314,22 +340,20 @@ export class OpenAICodexCredentialStore implements CredentialStore {
       const document = await this.readDocument()
       if (document === undefined) return undefined
       const credentials = [...documentCredentials(document)]
-      const capturedIndex = credentials.findIndex(credential => credential.accountId === capturedAccountId)
+      const capturedIndex = credentials.findIndex(credential => openAICodexCredentialKey(credential) === capturedKey)
       if (capturedIndex < 0) return undefined
       const current = cloneCredential(credentials[capturedIndex]!)
       options?.signal?.throwIfAborted()
       const candidate = await fn(current)
       if (candidate === undefined) return current
       const validated = parseCredential(candidate, this.filename)
-      if (validated.accountId !== capturedAccountId) {
+      if (openAICodexCredentialKey(validated) !== capturedKey) {
         throw new Error('openai-codex: a request credential refresh cannot change accountId')
       }
       credentials[capturedIndex] = validated
-      await this.writeDocument({
-        version: AUTH_FORMAT_VERSION,
-        activeAccountId: activeCredential(document).accountId,
-        credentials: credentials.map(cloneCredential),
-      }, document)
+      const active = activeCredential(document)
+      const nextActive = openAICodexCredentialKey(active) === capturedKey ? validated : active
+      await this.writeDocument(makeV2Document(nextActive, credentials), document)
       return cloneCredential(validated)
     })
   }
@@ -360,13 +384,9 @@ export class OpenAICodexCredentialStore implements CredentialStore {
       const document = await this.readDocument()
       if (document === undefined) throw new Error('openai-codex: account not found')
       const credentials = documentCredentials(document)
-      const selected = credentials.find(credential => accountKey(credential.accountId) === selectedAccountKey)
+      const selected = credentials.find(credential => openAICodexCredentialKey(credential) === selectedAccountKey)
       if (selected === undefined) throw new Error('openai-codex: account not found')
-      await this.writeDocument({
-        version: AUTH_FORMAT_VERSION,
-        activeAccountId: selected.accountId,
-        credentials: credentials.map(cloneCredential),
-      }, document)
+      await this.writeDocument(makeV2Document(selected, credentials), document)
       return cloneCredential(selected)
     })
   }
@@ -378,19 +398,19 @@ export class OpenAICodexCredentialStore implements CredentialStore {
       const document = await this.readDocument()
       if (document === undefined) throw new Error('openai-codex: account not found')
       const credentials = [...documentCredentials(document)]
-      const removeIndex = credentials.findIndex(credential => accountKey(credential.accountId) === selectedAccountKey)
+      const removeIndex = credentials.findIndex(credential => openAICodexCredentialKey(credential) === selectedAccountKey)
       if (removeIndex < 0) throw new Error('openai-codex: account not found')
       const removed = credentials[removeIndex]!
       const active = activeCredential(document)
       const remaining = credentials.filter((_, index) => index !== removeIndex)
-      let nextActive = active.accountId
-      if (removed.accountId === active.accountId && remaining.length > 0) {
+      let nextActive = active
+      if (openAICodexCredentialKey(removed) === openAICodexCredentialKey(active) && remaining.length > 0) {
         if (replacementAccountKey === undefined) {
           throw new Error('openai-codex: removing the active account requires replacementAccountKey')
         }
-        const replacement = remaining.find(credential => accountKey(credential.accountId) === replacementAccountKey)
+        const replacement = remaining.find(credential => openAICodexCredentialKey(credential) === replacementAccountKey)
         if (replacement === undefined) throw new Error('openai-codex: replacement account not found')
-        nextActive = replacement.accountId
+        nextActive = replacement
       } else if (replacementAccountKey !== undefined) {
         throw new Error('openai-codex: replacementAccountKey is only valid when removing the active account')
       }
@@ -399,11 +419,7 @@ export class OpenAICodexCredentialStore implements CredentialStore {
         await rm(this.filename, { force: true })
         return
       }
-      await this.writeDocument({
-        version: AUTH_FORMAT_VERSION,
-        activeAccountId: nextActive,
-        credentials: remaining.map(cloneCredential),
-      })
+      await this.writeDocument(makeV2Document(nextActive, remaining))
     })
   }
 
@@ -421,23 +437,19 @@ export class OpenAICodexCredentialStore implements CredentialStore {
     return this.withWriterLock(async () => {
       const currentDocument = await this.readDocument()
       const current = currentDocument === undefined ? undefined : cloneCredential(activeCredential(currentDocument))
-      // pi-ai treats invocation of fn as the commit point and waits for its result.
       options?.signal?.throwIfAborted()
       const candidate = await fn(current)
       if (candidate === undefined) return current
       const validated = parseCredential(candidate, this.filename)
+      const validatedKey = openAICodexCredentialKey(validated)
       const credentials = currentDocument === undefined ? [] : [...documentCredentials(currentDocument)]
-      const existingIndex = credentials.findIndex(credential => credential.accountId === validated.accountId)
+      const existingIndex = credentials.findIndex(credential => openAICodexCredentialKey(credential) === validatedKey)
       if (existingIndex >= 0) credentials[existingIndex] = validated
       else credentials.push(validated)
       if (credentials.length > OPENAI_CODEX_ACCOUNT_LIMIT) {
         throw new Error(`openai-codex: credential store accepts at most ${String(OPENAI_CODEX_ACCOUNT_LIMIT)} accounts`)
       }
-      await this.writeDocument({
-        version: AUTH_FORMAT_VERSION,
-        activeAccountId: validated.accountId,
-        credentials: credentials.map(cloneCredential),
-      }, currentDocument)
+      await this.writeDocument(makeV2Document(validated, credentials), currentDocument)
       return cloneCredential(validated)
     })
   }

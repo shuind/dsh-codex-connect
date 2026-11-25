@@ -8,9 +8,13 @@ interface SpeedRequestScope { accountKey?: string; selection?: CapturedConversat
 const requestScope = new AsyncLocalStorage<SpeedRequestScope>()
 
 /** Called only after the normal auth resolver captured/refreshed this request's account. */
-export function recordSpeedRequestAccount(accountId: string): void {
+export function recordSpeedRequestAccount(accountIdOrKey: string): void {
   const scope = requestScope.getStore()
-  if (scope !== undefined) scope.accountKey = openAICodexAccountKey(accountId)
+  if (scope !== undefined) {
+    scope.accountKey = /^acct_[A-Za-z0-9_-]{43}$/u.test(accountIdOrKey)
+      ? accountIdOrKey
+      : openAICodexAccountKey(accountIdOrKey)
+  }
 }
 export function currentSpeedRequestAccount(): string | undefined { return requestScope.getStore()?.accountKey }
 export function currentCapturedSpeed(): CapturedConversationSpeed | undefined { return requestScope.getStore()?.selection }

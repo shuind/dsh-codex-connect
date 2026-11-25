@@ -7,7 +7,7 @@ import { createModels, ModelsError } from '@earendil-works/pi-ai'
 import type { AuthInteraction, CredentialStore } from '@earendil-works/pi-ai'
 import { openaiCodexProvider } from '@earendil-works/pi-ai/providers/openai-codex'
 import { openaiCodexOAuth, OpenAICodexRefreshRejectedError } from '../../../vendor/pi-ai-oauth/auth/oauth/openai-codex.js'
-import { OpenAICodexCredentialStore, OPENAI_CODEX_PROVIDER } from './store.ts'
+import { OpenAICodexCredentialStore, openAICodexCredentialKey, OPENAI_CODEX_PROVIDER } from './store.ts'
 import { OpenAICodexRequestAuthError } from '../../shared/auth.ts'
 
 /** Non-secret login state shown by the launcher. */
@@ -73,7 +73,7 @@ export async function openAICodexAuthStatus(
 export async function readOpenAICodexRequestAuth(
   store: Pick<OpenAICodexCredentialStore, 'captureActiveAccount'>,
   signal?: AbortSignal,
-): Promise<{ access: string; accountId: string }> {
+): Promise<{ access: string; accountId: string; accountKey: string }> {
   try {
     signal?.throwIfAborted()
     const credentials = await store.captureActiveAccount()
@@ -88,7 +88,11 @@ export async function readOpenAICodexRequestAuth(
       || typeof credential.accountId !== 'string' || credential.accountId.length === 0) {
       throw new OpenAICodexRequestAuthError('MISSING_CREDENTIAL')
     }
-    return { access, accountId: credential.accountId }
+    return {
+      access,
+      accountId: credential.accountId,
+      accountKey: openAICodexCredentialKey({ accountId: credential.accountId, access }),
+    }
   } catch (error: unknown) {
     if (signal?.aborted) throw new OpenAICodexRequestAuthError('ABORTED')
     if (error instanceof OpenAICodexRequestAuthError) throw error

@@ -263,4 +263,102 @@ describe('OpenAICodexCredentialStore', () => {
     await expect(stat(auth.filename)).rejects.toMatchObject({ code: 'ENOENT' })
     await expect(stat(auth.version1BackupFilename)).rejects.toMatchObject({ code: 'ENOENT' })
   })
+
+  it('stores, switches, refreshes, and removes multiple members sharing a ChatGPT Team accountId', async () => {
+    const jwt = (payload: Record<string, unknown>) => {
+      const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url')
+      return `${encode({ alg: 'none' })}.${encode(payload)}.sig`
+    }
+    const teamWorkspace = 'team-workspace-1'
+    const memberA1 = credential(jwt({
+      sub: 'auth0|alice',
+      'https://api.openai.com/auth': {
+        chatgpt_account_id: teamWorkspace,
+        chatgpt_user_id: 'user-alice',
+        chatgpt_plan_type: 'team',
+      },
+      'https://api.openai.com/profile': { name: 'Alice', email: 'alice@example.com' },
+    }), teamWorkspace)
+    const memberB = credential(jwt({
+      sub: 'auth0|bob',
+      'https://api.openai.com/auth': {
+        chatgpt_account_id: teamWorkspace,
+        chatgpt_user_id: 'user-bob',
+        chatgpt_plan_type: 'team',
+      },
+      'https://api.openai.com/profile': { name: 'Bob', email: 'bob@example.com' },
+    }), teamWorkspace)
+    const memberA2 = credential(jwt({
+      sub: 'auth0|alice',
+      'https://api.openai.com/auth': {
+        chatgpt_account_id: teamWorkspace,
+        chatgpt_user_id: 'user-alice',
+        chatgpt_plan_type: 'team',
+      },
+      'https://api.openai.com/profile': { name: 'Alice', email: 'alice@example.com' },
+    }), teamWorkspace)
+    memberA2.refresh = 'alice-refresh-2'
+
+    const auth = await store()
+    // Seed a legacy v2 file without activeAccountKey to verify seamless upgrade.
+    await writeFile(auth.filename, JSON.stringify({
+      version: 2,
+      activeAccountId: teamWorkspace,
+      credentials: [memberA1],
+    }), { mode: 0o600 })
+
+    // Logging in a second member of the same Team workspace keeps both accounts.
+    await auth.modify(OPENAI_CODEX_PROVIDER, async () => memberB)
+    const listed = await auth.accounts()
+    expect(listed).toHaveLength(2)
+    expect(listed[0]!.accountKey).not.toBe(listed[1]!.accountKey)
+    expect(listed.map(a => ({ name: a.displayName, email: a.maskedEmail, active: a.active }))).toEqual([
+      { name: 'Alice', email: 'al••@example.com', active: false },
+      { name: 'Bob', email: 'bo••@example.com', active: true },
+    ])
+
+    // Switch back to Alice and capture her account for an in-flight refresh while Bob is activated.
+    await auth.activate(listed[0]!.accountKey)
+    expect(await auth.read(OPENAI_CODEX_PROVIDER)).toMatchObject({ access: memberA1.access, accountId: teamWorkspace })
+    const capturedAlice = await auth.captureActiveAccount()
+    await auth.activate(listed[1]!.accountKey)
+    await capturedAlice.modify(OPENAI_CODEX_PROVIDER, async () => memberA2)
+
+    // Refreshing captured Alice must update Alice in-place without changing active Bob.
+    expect(await auth.read(OPENAI_CODEX_PROVIDER)).toMatchObject({ access: memberB.access, accountId: teamWorkspace })
+    expect(await auth.accounts()).toHaveLength(2)
+    await auth.activate(listed[0]!.accountKey)
+    expect(await auth.read(OPENAI_CODEX_PROVIDER)).toMatchObject({ refresh: 'alice-refresh-2', accountId: teamWorkspace })
+
+    // Re-logging in Bob updates Bob in place rather than creating a 3rd entry.
+    await auth.modify(OPENAI_CODEX_PROVIDER, async () => ({ ...memberB, refresh: 'bob-refresh-2' }))
+    expect(await auth.accounts()).toHaveLength(2)
+    expect(await auth.read(OPENAI_CODEX_PROVIDER)).toMatchObject({ refresh: 'bob-refresh-2' })
+
+    // Removing active Bob with Alice as replacement leaves only Alice.
+    await auth.removeAccount(listed[1]!.accountKey, listed[0]!.accountKey)
+    expect(await auth.accounts()).toHaveLength(1)
+    expect(await auth.read(OPENAI_CODEX_PROVIDER)).toMatchObject({ refresh: 'alice-refresh-2' })
+  })
+
+  it('disambiguates the same user across Personal Plus and multiple Team workspaces', async () => {
+    const jwt = (accountId: string, plan: string) => {
+      const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url')
+      return `${encode({ alg: 'none' })}.${encode({
+        'https://api.openai.com/auth': {
+          chatgpt_account_id: accountId,
+          chatgpt_user_id: 'user-same',
+          chatgpt_plan_type: plan,
+        },
+        'https://api.openai.com/profile': { name: 'Alice', email: 'alice@example.com' },
+      })}.sig`
+    }
+    const auth = await store()
+    await auth.modify(OPENAI_CODEX_PROVIDER, async () => credential(jwt('pers-1', 'plus'), 'pers-1'))
+    await auth.modify(OPENAI_CODEX_PROVIDER, async () => credential(jwt('team-1', 'team'), 'team-1'))
+    await auth.modify(OPENAI_CODEX_PROVIDER, async () => credential(jwt('team-2', 'team'), 'team-2'))
+    const accounts = await auth.accounts()
+    expect(accounts).toHaveLength(3)
+    expect(accounts.map(a => a.displayName)).toEqual(['Alice (Plus)', 'Alice (Team) #1', 'Alice (Team) #2'])
+  })
 })
