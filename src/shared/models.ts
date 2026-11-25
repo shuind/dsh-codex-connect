@@ -22,34 +22,29 @@ export function parseOpenAICodexReasoningEffort(value: unknown): OpenAICodexReas
   return value as OpenAICodexReasoningEffort
 }
 
-export type OpenAICodexSpeedMode = 'standard' | 'fast' | 'ultrafast'
+export type OpenAICodexSpeedMode = 'standard' | 'fast'
 
 export interface ConversationSpeedState {
   readonly generation: string
   readonly revision: number
   readonly mode: OpenAICodexSpeedMode
   readonly model: string
-  readonly modelSupported: boolean
-  readonly eligibility: 'unknown'
-  readonly hasAccount: boolean
-  readonly selectionAvailable: boolean
 }
 
 export function isOpenAICodexSpeedMode(value: unknown): value is OpenAICodexSpeedMode {
-  return value === 'standard' || value === 'fast' || value === 'ultrafast'
+  return value === 'standard' || value === 'fast'
 }
 
 export function readConversationSpeed(value: unknown, model: string): ConversationSpeedState | undefined {
   if (!isRecord(value) || typeof value['generation'] !== 'string' || !/^[A-Za-z0-9_-]{1,80}$/u.test(value['generation'])
     || !Number.isSafeInteger(value['revision']) || Number(value['revision']) < 0 || !isOpenAICodexSpeedMode(value['mode'])
-    || value['model'] !== model || typeof value['modelSupported'] !== 'boolean' || value['eligibility'] !== 'unknown'
-    || typeof value['hasAccount'] !== 'boolean' || typeof value['selectionAvailable'] !== 'boolean') return undefined
-  return value as unknown as ConversationSpeedState
-}
-
-/** Model support is separate from the account's unknown billing entitlement. */
-export function supportsOpenAICodexUltrafast(provider: unknown, model: unknown): boolean {
-  return provider === 'openai-codex' && (model === 'gpt-6-astra' || model === 'gpt-6.1-sol')
+    || value['model'] !== model) return undefined
+  return {
+    generation: value['generation'],
+    revision: Number(value['revision']),
+    mode: value['mode'],
+    model,
+  }
 }
 
 /**
@@ -59,19 +54,12 @@ export function supportsOpenAICodexUltrafast(provider: unknown, model: unknown):
 export function projectOpenAICodexSpeedPayload(
   payload: unknown,
   provider: string,
-  model: string,
+  _model: string,
   mode: OpenAICodexSpeedMode,
 ): unknown {
-  if (mode === 'ultrafast' && !supportsOpenAICodexUltrafast(provider, model)) {
-    throw new TypeError('ULTRAFAST_MODEL_UNSUPPORTED')
-  }
   if (!isRecord(payload) || provider !== 'openai-codex') return payload
-  if (mode === 'ultrafast') {
-    if (payload['model'] !== model) throw new TypeError('ULTRAFAST_PAYLOAD_MODEL_MISMATCH')
-    return { ...payload, service_tier: 'ultrafast' }
-  }
   if (mode === 'fast') return { ...payload, service_tier: 'priority' }
-  if (payload['service_tier'] !== 'priority' && payload['service_tier'] !== 'ultrafast') return payload
+  if (payload['service_tier'] !== 'priority') return payload
   const standard = { ...payload }
   delete standard['service_tier']
   return standard
@@ -80,7 +68,8 @@ export function projectOpenAICodexSpeedPayload(
 /** Preserve an optional new-session preference until settings layers have merged. */
 export function parseOpenAICodexSpeedDefault(value: unknown): OpenAICodexSpeedMode | null | undefined {
   if (value === undefined || value === null || isOpenAICodexSpeedMode(value)) return value
-  throw new TypeError('OpenAI Codex new-session speed must be standard, fast, ultrafast, null or omitted')
+  if (value === 'ultrafast') return 'fast'
+  throw new TypeError('OpenAI Codex new-session speed must be standard, fast, null or omitted')
 }
 
 /** Versioned official-client override policy, not a measured endpoint capacity. */

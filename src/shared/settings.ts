@@ -122,7 +122,6 @@ export interface OpenAICodexSettingsConfig {
   enableNewSubagentFastMode: boolean
   /** Use provider-native Responses V2 compaction when DSH requests compaction. */
   enableNativeCompaction: boolean
-  enableImageTool: boolean
   enableImageGeneration: boolean
   /** Optional profile-scoped model hint for image generation; empty uses the route default. */
   imageModelHint: string
@@ -144,7 +143,6 @@ export const DEFAULT_OPENAI_CODEX_SETTINGS: Readonly<OpenAICodexSettingsConfig> 
   newSubagentSpeedMode: undefined,
   enableNewSubagentFastMode: false,
   enableNativeCompaction: false,
-  enableImageTool: false,
   enableImageGeneration: false,
   imageModelHint: DEFAULT_OPENAI_CODEX_IMAGE_MODEL_HINT,
   searchModel: DEFAULT_OPENAI_CODEX_SEARCH_MODEL,
@@ -215,7 +213,6 @@ export function decodeOpenAICodexSettings(value: unknown): OpenAICodexSettingsCo
   const enableNewSessionFastMode = value['enableNewSessionFastMode']
   const enableNewSubagentFastMode = value['enableNewSubagentFastMode']
   const enableNativeCompaction = value['enableNativeCompaction']
-  const enableImageTool = value['enableImageTool']
   const enableImageGeneration = value['enableImageGeneration']
   const imageModelHint = value['imageModelHint']
   const searchModel = value['searchModel']
@@ -226,7 +223,7 @@ export function decodeOpenAICodexSettings(value: unknown): OpenAICodexSettingsCo
   if (enableProxy !== undefined && typeof enableProxy !== 'boolean') return undefined
   if (proxyUrl !== undefined && (typeof proxyUrl !== 'string' || !isValidOpenAICodexProxyUrl(proxyUrl))) return undefined
   if (contextWindowOverrides !== undefined && contextWindowOverrides !== null && !isValidOpenAICodexContextWindowOverrides(contextWindowOverrides)) return undefined
-  if (typeof enableSearch !== 'boolean' || typeof enableImageTool !== 'boolean') return undefined
+  if (typeof enableSearch !== 'boolean') return undefined
   if (enableNewSessionFastMode !== undefined && typeof enableNewSessionFastMode !== 'boolean') return undefined
   if (enableNewSubagentFastMode !== undefined && typeof enableNewSubagentFastMode !== 'boolean') return undefined
   if (enableNativeCompaction !== undefined && typeof enableNativeCompaction !== 'boolean') return undefined
@@ -249,7 +246,6 @@ export function decodeOpenAICodexSettings(value: unknown): OpenAICodexSettingsCo
     enableNewSessionFastMode: enableNewSessionFastMode ?? false,
     enableNewSubagentFastMode: enableNewSubagentFastMode ?? false,
     enableNativeCompaction: enableNativeCompaction ?? false,
-    enableImageTool,
     enableImageGeneration: enableImageGeneration ?? false,
     imageModelHint: imageModelHint ?? DEFAULT_OPENAI_CODEX_IMAGE_MODEL_HINT,
     searchModel,

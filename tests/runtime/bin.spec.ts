@@ -86,31 +86,6 @@ describe('dsh-codex-connect CLI', () => {
     expect(output).toContain('dsh-codex-connect trust-origin <origin>')
     expect(output).toContain('dsh-codex-connect trusted-origins [--json]')
     expect(output).toMatch(/doctor\s+inspect secret-free/u)
-    expect(output).toContain('doctor [--install-anchor <absolute-dsh-package.json>]')
-  })
-
-  it('accepts an explicit DSH installation anchor only for doctor without echoing it', async () => {
-    const anchor = '/fixture/dsh/node_modules/@deepseek-ai/dsh/package.json'
-    mocked.diagnose.mockResolvedValue({
-      credentialFile: { state: 'missing' },
-      compatibility: { status: 'compatible' },
-      hints: [],
-      capabilities: { search: false, imageTool: false, imageGeneration: false },
-      version: 'test',
-      node: 'v22.19.0',
-    })
-    let output = ''
-    vi.spyOn(process.stdout, 'write').mockImplementation(chunk => { output += String(chunk); return true })
-    await expect(run(['doctor', '--json', '--install-anchor', anchor])).resolves.toBe(0)
-    expect(mocked.diagnose).toHaveBeenCalledWith({ compatibilityOptions: { installAnchor: anchor } })
-    expect(output).not.toContain(anchor)
-
-    mocked.diagnose.mockClear()
-    let error = ''
-    vi.spyOn(process.stderr, 'write').mockImplementation(chunk => { error += String(chunk); return true })
-    await expect(run(['doctor', '--install-anchor', 'relative/secret/package.json'])).resolves.toBe(1)
-    expect(mocked.diagnose).not.toHaveBeenCalled()
-    expect(error).not.toContain('relative/secret')
   })
 
   it('uses a consistent error prefix', async () => {
@@ -134,23 +109,11 @@ describe('dsh-codex-connect CLI', () => {
       capabilities: {
         modelProvider: true,
         search: false,
-        imageTool: false,
         imageGeneration: false,
         changesHarnessDefaultModel: false,
         changesHarnessSearchRoute: false,
       },
       providerConflict: false,
-      compatibility: {
-        schemaVersion: 1,
-        status: 'compatible',
-        node: { supported: '^22.19.0 || >=24.0.0', installed: 'v24.19.0', status: 'compatible' },
-        packages: {
-          '@deepseek-ai/dsh-llm': { supported: '0.2.2-rc.5', installed: '0.2.2-rc.5', status: 'compatible' },
-          '@deepseek-ai/dsh-llm-pi-ai': { supported: '0.2.2-rc.5', installed: '0.2.2-rc.5', status: 'compatible' },
-          '@deepseek-ai/dsh-compaction': { supported: '0.2.2-rc.5', installed: '0.2.2-rc.5', status: 'compatible' },
-          '@earendil-works/pi-ai': { supported: '^1.5.0', installed: '1.6.0', status: 'compatible' },
-        },
-      },
       hints: ['Safe diagnostic hint'],
     })
     let output = ''
@@ -170,7 +133,6 @@ describe('dsh-codex-connect CLI', () => {
       capabilities: {
         modelProvider: true,
         search: false,
-        imageTool: false,
         imageGeneration: false,
         changesHarnessDefaultModel: false,
         changesHarnessSearchRoute: false,
@@ -179,7 +141,6 @@ describe('dsh-codex-connect CLI', () => {
       hints: ['Safe diagnostic hint'],
     })
     expect(parsed).not.toHaveProperty('credentialFile.path')
-    expect(parsed).toMatchObject({ compatibility: { schemaVersion: 1, status: 'compatible' } })
     for (const secret of [
       credentialPath,
       'https://auth.openai.com/oauth/authorize?fixture=secret',
@@ -192,33 +153,21 @@ describe('dsh-codex-connect CLI', () => {
     }
   })
 
-  it('returns exit 1 and a JSON compatibility status for an incompatible doctor report', async () => {
+  it('returns exit 1 when credential file metadata fails doctor checks', async () => {
     mocked.diagnose.mockResolvedValue({
       package: '@shuind/dsh-codex-connect',
       version: '0.2.0',
-      node: 'v22.19.0',
-      credentialFile: { path: '/Users/fixture/.dsh/openai-codex-auth.json', state: 'missing' },
+      node: 'v24.19.0',
+      credentialFile: { path: '/Users/fixture/.dsh/openai-codex-auth.json', state: 'permissions-too-broad', mode: '644' },
       capabilities: {
         modelProvider: true,
         search: false,
-        imageTool: false,
         imageGeneration: false,
         changesHarnessDefaultModel: false,
         changesHarnessSearchRoute: false,
       },
       providerConflict: false,
-      compatibility: {
-        schemaVersion: 1,
-        status: 'incompatible',
-        node: { supported: '^22.19.0 || >=24.0.0', installed: 'v20.0.0', status: 'incompatible' },
-        packages: {
-          '@deepseek-ai/dsh-llm': { supported: '0.2.2-rc.5', installed: '0.2.2-rc.5', status: 'compatible' },
-          '@deepseek-ai/dsh-llm-pi-ai': { supported: '0.2.2-rc.5', installed: '0.2.2-rc.5', status: 'compatible' },
-          '@deepseek-ai/dsh-compaction': { supported: '0.2.2-rc.5', installed: '0.2.2-rc.5', status: 'compatible' },
-          '@earendil-works/pi-ai': { supported: '^1.5.0', installed: '1.6.0', status: 'compatible' },
-        },
-      },
-      hints: ['Compatibility mismatch'],
+      hints: ['Restrict the OAuth file'],
     })
     let output = ''
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
@@ -226,7 +175,7 @@ describe('dsh-codex-connect CLI', () => {
       return true
     })
     await expect(run(['doctor', '--json'])).resolves.toBe(1)
-    expect(JSON.parse(output)).toMatchObject({ compatibility: { status: 'incompatible' } })
+    expect(JSON.parse(output)).toMatchObject({ credentialFile: { state: 'permissions-too-broad', mode: '644' } })
     expect(output).not.toContain('/Users/fixture')
   })
 

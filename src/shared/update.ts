@@ -5,19 +5,6 @@ export const OPENAI_CODEX_PACKAGE_NAME = '@shuind/dsh-codex-connect'
 export const OPENAI_CODEX_NPM_METADATA_URL = `https://registry.npmjs.org/-/package/${OPENAI_CODEX_PACKAGE_NAME}/dist-tags`
 export const OPENAI_CODEX_GITHUB_LATEST_RELEASE_URL = 'https://api.github.com/repos/shuind/dsh-codex-connect/releases/latest'
 export const OPENAI_CODEX_RELEASE_PAGE_BASE = 'https://github.com/shuind/dsh-codex-connect/releases/tag/v'
-export const OPENAI_CODEX_VERIFIED_COMPATIBILITY_URL = 'https://raw.githubusercontent.com/shuind/dsh-codex-connect/main/verified-compatibility.json'
-
-export interface OpenAICodexVerifiedPluginVersion {
-  version: string
-  verifiedDshVersions: string[]
-}
-
-export interface OpenAICodexVerifiedCompatibilityCatalog {
-  schemaVersion: 1
-  checkedAt: string
-  latestDshVersion: string
-  pluginVersions: OpenAICodexVerifiedPluginVersion[]
-}
 
 export type OpenAICodexUpdateResult =
   | {
@@ -95,38 +82,6 @@ export function compareOpenAICodexVersions(left: string, right: string): number 
     if (comparison !== 0) return comparison
   }
   return 0
-}
-
-/** Parse the repository-owned compatibility catalog without assuming version ranges are monotonic. */
-export function parseOpenAICodexVerifiedCompatibility(value: unknown): OpenAICodexVerifiedCompatibilityCatalog | undefined {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
-  const record = value as Record<string, unknown>
-  const checkedAt = record['checkedAt']
-  const latestDshVersion = record['latestDshVersion']
-  const rawPluginVersions = record['pluginVersions']
-  if (record['schemaVersion'] !== 1
-    || typeof checkedAt !== 'string' || !/^\d{4}-\d{2}-\d{2}$/u.test(checkedAt)
-    || typeof latestDshVersion !== 'string' || parseOpenAICodexVersion(latestDshVersion) === undefined
-    || !Array.isArray(rawPluginVersions) || rawPluginVersions.length > 256) return undefined
-  const pluginVersions: OpenAICodexVerifiedPluginVersion[] = []
-  const seenPluginVersions = new Set<string>()
-  for (const rawPluginVersion of rawPluginVersions) {
-    if (typeof rawPluginVersion !== 'object' || rawPluginVersion === null || Array.isArray(rawPluginVersion)) return undefined
-    const pluginVersion = rawPluginVersion as Record<string, unknown>
-    const version = pluginVersion['version']
-    const rawVerified = pluginVersion['verifiedDshVersions']
-    if (typeof version !== 'string' || parseOpenAICodexVersion(version) === undefined
-      || seenPluginVersions.has(version) || !Array.isArray(rawVerified) || rawVerified.length > 64) return undefined
-    const verifiedDshVersions: string[] = []
-    for (const rawDshVersion of rawVerified) {
-      if (typeof rawDshVersion !== 'string' || parseOpenAICodexVersion(rawDshVersion) === undefined
-        || verifiedDshVersions.includes(rawDshVersion)) return undefined
-      verifiedDshVersions.push(rawDshVersion)
-    }
-    seenPluginVersions.add(version)
-    pluginVersions.push({ version, verifiedDshVersions })
-  }
-  return { schemaVersion: 1, checkedAt, latestDshVersion, pluginVersions }
 }
 
 /** Validate a route response before it is rendered by the browser. */

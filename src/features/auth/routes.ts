@@ -252,9 +252,6 @@ export function registerOpenAICodexAuthRoutes(
         if (req.method === 'GET') {
           const sessionId = fastModeSessionIdFromQuery(req)
           if (sessionId === undefined) return json(res, 400, { error: 'invalid input' })
-          if (fastMode instanceof ConversationSpeedRegistry && fastMode.isUltrafastSelected(sessionId)) {
-            return json(res, 409, { error: 'use the conversation speed control for Ultrafast' })
-          }
           return json(res, 200, { enabled: fastMode.isEnabled(sessionId) })
         }
         if (!isJsonContentType(req)) return json(res, 415, { error: 'unsupported content type' })
@@ -307,9 +304,7 @@ export function registerOpenAICodexAuthRoutes(
         } catch (error: unknown) {
           if (error instanceof RangeError) return json(res, 413, { error: 'request body too large' })
           if (error instanceof TypeError) {
-            const code = error.message
-            if (['SPEED_SELECTION_STALE', 'ULTRAFAST_SIGN_IN_REQUIRED', 'ULTRAFAST_SELECTION_UNAVAILABLE'].includes(code)) return json(res, 409, { error: code })
-            if (code === 'ULTRAFAST_MODEL_UNSUPPORTED') return json(res, 400, { error: code })
+            if (error.message === 'SPEED_SELECTION_STALE') return json(res, 409, { error: error.message })
             return json(res, 400, { error: 'invalid input' })
           }
           return json(res, 503, { error: 'speed selection unavailable' })

@@ -100,7 +100,6 @@ export function OpenAICodexSettings({ t, configScope, updater, account, embedded
       (config.newSessionSpeedMode ?? (config.enableNewSessionFastMode ? 'fast' : 'standard')) !== 'standard',
       (config.newSubagentSpeedMode ?? (config.enableNewSubagentFastMode ? 'fast' : 'standard')) !== 'standard',
       config.enableNativeCompaction,
-      config.enableImageTool,
       config.enableImageGeneration,
     ].filter(Boolean).length
     return t('capabilitiesModuleEnabled', { count })

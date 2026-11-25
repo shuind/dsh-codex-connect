@@ -24,13 +24,10 @@ import type { OpenAICodexBackendRequests } from '../../platform/http/backend-req
 import { streamWithNativeCompactionScope, withOpenAICodexNativeCompaction } from '../compaction/index.ts'
 import { OPENAI_CODEX_TRANSPORT, withOpenAICodexModels } from './model-catalog.ts'
 import { streamWithCodexRequestDiagnostics, withCodexDiagnosticFetch } from './request-diagnostics.ts'
-import { ConversationSpeedRegistry } from './speed/conversation-speed.ts'
 import type { FastModeRegistry } from './speed/fast-mode.ts'
-import { currentCapturedSpeed, currentSpeedRequestAccount, recordSpeedRequestAccount, streamWithSpeedRequestScope } from './speed/speed-request-scope.ts'
-import { OpenAICodexPreflightActivity, OPENAI_CODEX_STREAM_IDLE_TIMEOUT_MS, type OpenAICodexPreflightConfig } from './preflight/activity.ts'
 
 export { OPENAI_CODEX_ASTRA_MODEL_ID, OPENAI_CODEX_TRANSPORT, openAICodexModelCatalog, withOpenAICodexAstra, withOpenAICodexModels } from './model-catalog.ts'
-export { OPENAI_CODEX_STREAM_IDLE_TIMEOUT_MS } from './preflight/activity.ts'
+export const OPENAI_CODEX_STREAM_IDLE_TIMEOUT_MS = 300_000
 
 export const OPENAI_CODEX_MAX_REQUEST_IMAGE_BYTES = 20 * 1024 * 1024
 export const OPENAI_CODEX_MAX_REQUEST_IMAGES = 50
@@ -45,7 +42,6 @@ export interface OpenAICodexProfileOptions {
   contextWindowOverrides?: Readonly<Record<string, number>> | undefined
   backendRequests?: OpenAICodexBackendRequests | undefined
   wrapProvider?: ((provider: Provider) => Provider) | undefined
-  preflight?: OpenAICodexPreflightActivity | undefined
   retryPolicy?: ResolvedRetryPolicy | undefined
   reasoningEffort?: OpenAICodexReasoningEffort | undefined
 }
@@ -59,7 +55,6 @@ export interface OpenAICodexAdapterOptions {
   nativeCompactionEnabled?: (() => boolean) | undefined
   backendRequests?: OpenAICodexBackendRequests | undefined
   imageEditingEnabled?: (() => boolean) | undefined
-  preflightActivity?: OpenAICodexPreflightConfig | undefined
   retryPolicyConfig?: RetryPolicyConfig | undefined
   resolveReasoningEffort?: (() => OpenAICodexReasoningEffort | undefined) | undefined
 }
@@ -81,7 +76,7 @@ function codexRequestOptions(
   }
 }
 
-/** Add the request-scoped Fast/Ultrafast speed hint without changing auth or other options. */
+/** Add the request-scoped Fast speed hint without changing auth or other options. */
 export function withOpenAICodexFastMode(
   provider: Provider,
   fastMode: FastModeRegistry | undefined,
@@ -95,13 +90,8 @@ export function withOpenAICodexFastMode(
         && model.provider === OPENAI_CODEX_PROVIDER
         && fastMode !== undefined
         && fastMode.isEnabled(sessionId)
-      const scoped = fastMode instanceof ConversationSpeedRegistry
-        && provider.id === OPENAI_CODEX_PROVIDER && model.provider === OPENAI_CODEX_PROVIDER
-      const captured = scoped ? currentCapturedSpeed() ?? fastMode.captureSpeed(sessionId) : undefined
-      const mode = scoped && captured !== undefined ? fastMode.confirmCapturedSpeed(sessionId, captured, {
-        workspace: fastMode.workspaceFor(sessionId), accountKey: currentSpeedRequestAccount(), provider: model.provider, model: model.id,
-      }) : enabled ? 'fast' : 'standard'
-      if (mode === 'standard' && (!scoped || options?.onPayload === undefined)) return streamSimple.call(provider, model, context, options)
+      const mode = enabled ? 'fast' : 'standard'
+      if (mode === 'standard' && options?.onPayload === undefined) return streamSimple.call(provider, model, context, options)
       const previousOnPayload = options?.onPayload
       const nextOptions: SimpleStreamOptions = {
         ...options,
@@ -116,29 +106,27 @@ export function withOpenAICodexFastMode(
 }
 
 function requestProvider(provider: Provider, options: OpenAICodexProfileOptions): Provider {
-  const { fastMode, proxyManager, resolveProxyUrl, backendRequests, wrapProvider, preflight } = options
+  const { fastMode, proxyManager, resolveProxyUrl, backendRequests, wrapProvider } = options
   const ordinary = withOpenAICodexFastMode(withOpenAICodexNativeCompaction(provider), fastMode)
   const configured = wrapProvider === undefined ? ordinary : wrapProvider(ordinary)
   const streamSimple = configured.streamSimple
   return {
     ...configured,
     streamSimple(model, context: TranscriptContext, streamOptions?: SimpleStreamOptions) {
-      const operation = (actualProxyOrigin: string | undefined) => {
+      const operation = () => {
         const diagnosticOptions = withCodexDiagnosticFetch(streamOptions, backendRequests)
-        const requestOptions = preflight === undefined ? diagnosticOptions : preflight.wrap(diagnosticOptions, actualProxyOrigin)
-        return streamSimple.call(configured, model, context, codexRequestOptions(provider.id, model, requestOptions))
+        return streamSimple.call(configured, model, context, codexRequestOptions(provider.id, model, diagnosticOptions))
       }
       if (backendRequests !== undefined) return backendRequests.runStream(operation)
       const proxyUrl = resolveProxyUrl?.()
-      return proxyManager?.runStream(proxyUrl, () => operation(proxyUrl)) ?? operation(undefined)
+      return proxyManager?.runStream(proxyUrl, operation) ?? operation()
     },
     auth: {
       ...provider.auth,
       apiKey: {
         name: 'OpenAI Codex OAuth bearer token',
-        async resolve({ credential, signal }) {
+        async resolve({ credential }) {
           const apiKey = credential?.key
-          if (apiKey !== undefined && apiKey.length > 0) preflight?.activate(signal)
           return apiKey === undefined || apiKey.length === 0 ? undefined : { auth: { apiKey }, source: 'OAuth' }
         },
       },
@@ -159,7 +147,7 @@ export function createOpenAICodexProfile(
     provider: OPENAI_CODEX_PROVIDER,
     displayName: 'OpenAI Codex',
     transport: OPENAI_CODEX_TRANSPORT,
-    streamIdleTimeoutMs: options.preflight?.hostIdleTimeoutMs ?? OPENAI_CODEX_STREAM_IDLE_TIMEOUT_MS,
+    streamIdleTimeoutMs: OPENAI_CODEX_STREAM_IDLE_TIMEOUT_MS,
     maxRequestImageBytes: OPENAI_CODEX_MAX_REQUEST_IMAGE_BYTES,
     maxRequestImages: OPENAI_CODEX_MAX_REQUEST_IMAGES,
     imageOffloadCountQuantum: OPENAI_CODEX_IMAGE_OFFLOAD_COUNT_QUANTUM,
@@ -232,12 +220,11 @@ export function createOpenAICodexAdapter(
 ): PiAiAdapter {
   const {
     fastMode, visibleModelIds, proxyManager, resolveProxyUrl, contextWindowOverrides,
-    nativeCompactionEnabled, backendRequests, imageEditingEnabled, preflightActivity,
+    nativeCompactionEnabled, backendRequests, imageEditingEnabled,
     retryPolicyConfig, resolveReasoningEffort,
   } = options
   if (retryPolicyConfig === null) throw new TypeError('dsh-codex-connect retryPolicy must be an object or omitted')
   const retryPolicy = resolveRetryPolicy(retryPolicyConfig, 'dsh-codex-connect retryPolicy')
-  const preflight = preflightActivity === undefined ? undefined : new OpenAICodexPreflightActivity(preflightActivity)
   const provider = withOpenAICodexModels(openaiCodexProvider(), 'bundled-static')
   let profiles: Map<string, ResolvedPiAiProviderProfile> | undefined
   let previousOverrides: Readonly<Record<string, number>> | undefined
@@ -249,7 +236,7 @@ export function createOpenAICodexAdapter(
     if (profiles === undefined || previousReasoningEffort !== reasoningEffort || !deepEqualJson(previousOverrides, overrides)) {
       const profile = createOpenAICodexProfile(provider, {
         fastMode, proxyManager, resolveProxyUrl, contextWindowOverrides: overrides,
-        backendRequests, preflight, retryPolicy, reasoningEffort,
+        backendRequests, retryPolicy, reasoningEffort,
       })
       previousReasoningEffort = reasoningEffort
       previousOverrides = overrides === undefined ? undefined : { ...overrides }
@@ -263,19 +250,11 @@ export function createOpenAICodexAdapter(
       stream: (request: GenerateOptions) => AsyncIterable<StreamChunk>,
       requestOptions: GenerateOptions,
     ): AsyncIterable<StreamChunk> {
-      const dispatch = (request: GenerateOptions) => {
-        const projected = imageEditingEnabled?.() === true ? withOpenAICodexImageSelectionHandles(request) : request
-        return streamWithCodexRequestDiagnostics(next => {
-          const native = (req: GenerateOptions) => streamWithNativeCompactionScope(stream, req, nativeCompactionEnabled?.() === true)
-          return preflight === undefined ? native(next) : preflight.stream(native, next)
-        }, projected)
-      }
-      return fastMode instanceof ConversationSpeedRegistry
-        ? streamWithSpeedRequestScope(dispatch, requestOptions, () => {
-          const captured = fastMode.captureSpeed(requestOptions.sessionId)
-          return requestOptions.purpose !== undefined && captured.mode === 'ultrafast' ? { mode: 'standard' } : captured
-        })
-        : dispatch(requestOptions)
+      const projected = imageEditingEnabled?.() === true ? withOpenAICodexImageSelectionHandles(requestOptions) : requestOptions
+      return streamWithCodexRequestDiagnostics(
+        next => streamWithNativeCompactionScope(stream, next, nativeCompactionEnabled?.() === true),
+        projected,
+      )
     }
 
     override async prepareCall(providerId: string, model: string, signal?: AbortSignal): Promise<PreparedAdapterCall> {
@@ -302,11 +281,7 @@ export function createOpenAICodexAdapter(
   return new OpenAICodexAdapter({
     profiles: currentProfiles,
     resolveApiKey: async () => {
-      const operation = async () => {
-        const auth = await readOpenAICodexRequestAuth(credentials)
-        recordSpeedRequestAccount(auth.accountKey)
-        return auth.access
-      }
+      const operation = async () => (await readOpenAICodexRequestAuth(credentials)).access
       return proxyManager?.run(resolveProxyUrl?.(), operation) ?? operation()
     },
     auth: { credentials: new InMemoryCredentialStore(), authContext: defaultProviderAuthContext() },

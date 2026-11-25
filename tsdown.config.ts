@@ -21,15 +21,6 @@ const CLIENT_EXTERNALS = [
   '@deepseek-ai/dsh-client-ui-settings/client',
 ] as const
 
-// Remove semver's source-coverage marker before it creates trailing whitespace in bundled output.
-const semverCoverageComment = {
-  name: 'strip-semver-coverage-comment',
-  transform(code: string, id: string) {
-    if (!/[\\/]semver[\\/]internal[\\/]constants\.js$/u.test(id)) return
-    return code.replace('/* istanbul ignore next */ ', '')
-  },
-}
-
 export default [
   {
     entry: {
@@ -78,7 +69,6 @@ export default [
     fixedExtension: false,
     dts: false,
     clean: false,
-    plugins: [semverCoverageComment],
     deps: { alwaysBundle: [/.*/u] },
     define: {
       __CODEX_CONNECT_VERSION__: JSON.stringify(PACKAGE_VERSION),
@@ -91,8 +81,7 @@ export default [
     platform: 'browser',
     dts: false,
     clean: false,
-    plugins: [semverCoverageComment],
-    deps: { neverBundle: [...CLIENT_EXTERNALS], alwaysBundle: ['semver'] },
+    deps: { neverBundle: [...CLIENT_EXTERNALS] },
     define: {
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
       __CODEX_CONNECT_VERSION__: JSON.stringify(PACKAGE_VERSION),

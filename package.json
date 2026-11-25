@@ -46,11 +46,10 @@
     "build": "tsdown",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.client.json",
-    "check:compatibility": "node scripts/check-compatibility.mjs",
     "pack:check": "node scripts/lib/check-pack-command.test.mjs && node scripts/lib/check-pack-inventory.test.mjs && node scripts/check-pack.mjs",
     "check:env-proxy-import": "node scripts/check-env-proxy-import.mjs",
     "check:isolated-import": "node scripts/check-isolated-import.mjs",
-    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run check:env-proxy-import && pnpm run check:isolated-import && pnpm --silent run check:compatibility && pnpm run pack:check",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run check:env-proxy-import && pnpm run check:isolated-import && pnpm run pack:check",
     "prepare": "npm run build",
     "prepublishOnly": "pnpm --config.minimum-release-age=0 run check"
   },
@@ -61,12 +60,10 @@
     },
     "./client": "./lib/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
-    "./compatibility.json": "./compatibility.json",
     "./package.json": "./package.json"
   },
   "files": [
     "lib",
-    "compatibility.json",
     "cordis.patch.yml",
     "docs",
     "INSTALL.md",
@@ -77,8 +74,7 @@
   "dependencies": {
     "@deepseek-ai/schemastery": "~3.19.0",
     "@earendil-works/pi-ai": "^1.5.0",
-    "undici": "^8.12.4",
-    "semver": "7.8.5"
+    "undici": "^8.12.4"
   },
   "license": "Apache-2.0",
   "dsh": {
@@ -125,7 +121,6 @@
     "@deepseek-ai/dsh-tools": ">=0.2.2-rc.1 <0.2.3",
     "@deepseek-ai/dsh-util-values": ">=0.2.2-rc.1 <0.2.3",
     "@deepseek-ai/dsh-web": ">=0.2.2-rc.1 <0.2.3",
-    "@deepseek-ai/dsh-timeout": ">=0.2.2-rc.1 <0.2.3",
     "react": "^18.2.0"
   },
   "peerDependenciesMeta": {
@@ -178,7 +173,6 @@
     "@deepseek-ai/dsh-host-webserver": "0.2.2-rc.5",
     "@deepseek-ai/dsh-launch-environment": "0.2.2-rc.5",
     "@deepseek-ai/dsh-llm": "0.2.2-rc.5",
-    "@deepseek-ai/dsh-timeout": "0.2.2-rc.5",
     "@deepseek-ai/dsh-llm-pi-ai": "0.2.2-rc.5",
     "@deepseek-ai/dsh-native-command": "0.2.2-rc.5",
     "@deepseek-ai/dsh-sandbox": "0.2.2-rc.5",
@@ -232,6 +226,7 @@
     "pi-ai-oauth-source": "npm:@earendil-works/pi-ai@0.84.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "semver": "7.8.5",
     "shiki": "^4.3.1",
     "simple-icons": "16.36.0",
     "tsdown": "^0.23.1",

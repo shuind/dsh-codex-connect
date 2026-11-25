@@ -3,7 +3,6 @@
 
 import { spawn } from 'node:child_process'
 import { realpathSync } from 'node:fs'
-import { basename, isAbsolute } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
 import type { AuthEvent, AuthPrompt } from '@earendil-works/pi-ai'
@@ -84,7 +83,7 @@ async function answerPrompt(
 function printHelp(): void {
   process.stdout.write([
     'Usage: dsh-codex-connect <doctor|login|logout|status> [--device-code|--json]',
-    '       dsh-codex-connect doctor [--install-anchor <absolute-dsh-package.json>] [--json]',
+    '       dsh-codex-connect doctor [--json]',
     '       dsh-codex-connect trust-origin <origin>',
     '       dsh-codex-connect trusted-origins [--json]',
     '       dsh-codex-connect untrust-origin <origin>',
@@ -106,13 +105,12 @@ function doctorExitCode(report: DiagnosticReport): number {
   const credentialFailure = report.credentialFile.state === 'permissions-too-broad'
     || report.credentialFile.state === 'not-a-regular-file'
     || report.credentialFile.state === 'unreadable-metadata'
-  const compatibilityFailure = report.compatibility !== undefined && report.compatibility.status !== 'compatible'
-  return credentialFailure || compatibilityFailure ? 1 : 0
+  return credentialFailure ? 1 : 0
 }
 
 /** Project the diagnostic report without its absolute credential pathname. */
 function doctorJson(report: DiagnosticReport): Record<string, unknown> {
-  const result: Record<string, unknown> = {
+  return {
     schemaVersion: JSON_SCHEMA_VERSION,
     package: report.package,
     version: report.version,
@@ -125,8 +123,6 @@ function doctorJson(report: DiagnosticReport): Record<string, unknown> {
     providerConflict: report.providerConflict,
     hints: report.hints,
   }
-  if (report.compatibility !== undefined) result.compatibility = report.compatibility
-  return result
 }
 
 function printJson(value: unknown): void {
@@ -150,25 +146,7 @@ export async function run(argv: readonly string[]): Promise<number> {
   const optionFlags = action === 'trust-origin' || action === 'untrust-origin' ? flags.slice(1) : flags
   const deviceCode = optionFlags.includes('--device-code')
   const jsonOutput = optionFlags.includes('--json')
-  let installAnchor: string | undefined
-  const unknown: string[] = []
-  if (action === 'doctor') {
-    for (let index = 0; index < optionFlags.length; index += 1) {
-      const flag = optionFlags[index]
-      if (flag === '--json') continue
-      if (flag === '--install-anchor' && installAnchor === undefined) {
-        const value = optionFlags[index + 1]
-        if (value !== undefined && isAbsolute(value) && basename(value) === 'package.json') {
-          installAnchor = value
-          index += 1
-          continue
-        }
-      }
-      unknown.push(flag ?? '')
-    }
-  } else {
-    unknown.push(...optionFlags.filter(flag => flag !== '--device-code' && flag !== '--json'))
-  }
+  const unknown = optionFlags.filter(flag => flag !== '--device-code' && flag !== '--json')
   if (unknown.length > 0
     || (deviceCode && action !== 'login')
     || (jsonOutput && (action === 'login' || action === 'logout' || deviceCode))
@@ -179,8 +157,7 @@ export async function run(argv: readonly string[]): Promise<number> {
   try {
     switch (action) {
       case 'doctor': {
-        const report = await diagnoseOpenAICodex(installAnchor === undefined
-          ? undefined : { compatibilityOptions: { installAnchor } })
+        const report = await diagnoseOpenAICodex()
         if (jsonOutput) {
           printJson(doctorJson(report))
           return doctorExitCode(report)
@@ -188,10 +165,7 @@ export async function run(argv: readonly string[]): Promise<number> {
         process.stdout.write([
           `Codex Connect ${report.version} on ${report.node}`,
           `OAuth file metadata: ${report.credentialFile.state} (${report.credentialFile.path})`,
-          ...(report.compatibility === undefined ? [] : [
-            `Compatibility: ${report.compatibility.status} (Node ${report.compatibility.node.installed ?? 'unknown'}; DSH API ${report.compatibility.packages['@deepseek-ai/dsh-llm'].installed ?? 'unknown'}; pi-ai ${report.compatibility.packages['@earendil-works/pi-ai'].installed ?? 'unknown'})`,
-          ]),
-          `Optional capability defaults: search=${report.capabilities.search ? 'enabled' : 'disabled'}, imageTool=${report.capabilities.imageTool ? 'enabled' : 'disabled'}, imageGeneration=${report.capabilities.imageGeneration ? 'enabled' : 'disabled'}`,
+          `Optional capability defaults: search=${report.capabilities.search ? 'enabled' : 'disabled'}, imageGeneration=${report.capabilities.imageGeneration ? 'enabled' : 'disabled'}`,
           'Harness defaults: unchanged by this plugin',
           ...report.hints.map(hint => `Hint: ${hint}`),
           '',

@@ -45,13 +45,14 @@ describe('OpenAI Codex proxy settings contract', () => {
     expect(DEFAULT_OPENAI_CODEX_SETTINGS.proxyUrl).toBe(DEFAULT_OPENAI_CODEX_PROXY_URL)
     const legacy = decodeOpenAICodexSettings({
       enableSearch: false,
-      enableImageTool: false,
+      newSessionSpeedMode: 'ultrafast',
       searchModel: 'gpt-5.6-sol',
       searchMode: 'cached',
       searchContextSize: 'medium',
       searchMaxOutputTokens: 10_000,
     })
     expect(legacy?.enableProxy).toBe(false)
+    expect(legacy?.newSessionSpeedMode).toBe('fast')
     expect(legacy?.enableNewSessionFastMode).toBe(false)
     expect(legacy?.enableNewSubagentFastMode).toBe(false)
     expect(legacy?.enableNativeCompaction).toBe(false)

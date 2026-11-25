@@ -69,7 +69,6 @@ const CONFIG_FIELDS = [
   'enableNewSubagentFastMode',
   'enableNativeCompaction',
   'proxyUrl',
-  'enableImageTool',
   'enableImageGeneration',
   'imageModelHint',
   'searchModel',

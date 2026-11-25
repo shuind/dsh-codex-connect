@@ -43,15 +43,6 @@ for (const filename of productFiles) {
 }
 
 try {
-  const compatibility = JSON.parse(await readFile(new URL('../verified-compatibility.json', import.meta.url), 'utf8'))
-  if (compatibility?.schemaVersion !== 1 || !Array.isArray(compatibility?.pluginVersions) || compatibility.pluginVersions.length === 0) {
-    failures.push('verified-compatibility.json must use schemaVersion 1 with at least one plugin version entry')
-  }
-} catch {
-  failures.push('verified-compatibility.json must be readable JSON')
-}
-
-try {
   await stat(new URL('../README.zh.md', import.meta.url))
   failures.push('root README.zh.md must migrate to docs/README.zh.md')
 } catch (error) {

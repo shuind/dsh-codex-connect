@@ -8,7 +8,6 @@ describe('bundle defaults', () => {
     expect(patch).toContain('enableProxy: false')
     expect(patch).toContain('enableSearch: false')
     expect(patch).toContain('enableNativeCompaction: false')
-    expect(patch).toContain('enableImageTool: false')
     expect(patch).toContain('enableImageGeneration: false')
     expect(patch).not.toMatch(/^- id: agent-default-model/mu)
     expect(patch).not.toMatch(/searchProvider:\s*openai-codex/u)

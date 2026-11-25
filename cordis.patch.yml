@@ -7,5 +7,4 @@
         enableProxy: false
         enableSearch: false
         enableNativeCompaction: false
-        enableImageTool: false
         enableImageGeneration: false

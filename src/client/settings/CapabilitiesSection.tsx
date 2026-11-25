@@ -145,12 +145,10 @@ export function CapabilitiesSection({
             <option value="">{t('legacySpeedDefault')}</option>
             <option value="standard">{t('speedStandard')}</option>
             <option value="fast">{t('speedFast')}</option>
-            <option value="ultrafast">Ultrafast</option>
           </select>
         </label>
       ))}
       <p style={bodyStyle}>{t('newSessionSpeedHelp')}</p>
-      <p style={bodyStyle}>{t('ultrafastDisclosure')}</p>
       <label style={toggleRowStyle}>
         <input
           type="checkbox"
@@ -211,17 +209,6 @@ export function CapabilitiesSection({
           </details>
         </div>
       </div>
-      <label style={toggleRowStyle}>
-        <input
-          type="checkbox"
-          checked={draft.enableImageTool}
-          onChange={event => { onUpdate('enableImageTool', event.currentTarget.checked) }}
-        />
-        <span style={toggleCopyStyle}>
-          <span style={labelStyle}>{t('enableImageTool')}</span>
-          <span style={bodyStyle}>{t('enableImageToolHelp')}</span>
-        </span>
-      </label>
       <label style={toggleRowStyle}>
         <input
           type="checkbox"

@@ -17,7 +17,6 @@ import type {} from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-web'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-tools'
-import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-settings'
 import {
   OPENAI_CODEX_SETTINGS_NAMESPACE,
@@ -38,7 +37,6 @@ import { OpenAICodexImageAssetStore } from './features/images/assets.ts'
 import { registerOpenAICodexOriginalImageRoute } from './features/images/asset-routes.ts'
 import { registerImageHandleBridge } from './features/images/inputs/handle-bridge.ts'
 import { imageGenerateTool } from './features/images/tools/generate-tool.ts'
-import { viewImageTool } from './features/images/tools/view-tool.ts'
 import { OpenAICodexTransport } from './features/images/transport.ts'
 import type { OpenAICodexTransportV1 } from './features/images/transport.ts'
 import { assertOpenAICodexContextWindowOverrides, createOpenAICodexAdapter, openAICodexModelCatalog } from './features/provider/adapter.ts'
@@ -47,7 +45,6 @@ import { registerOpenAICodexModelCatalogRoute } from './features/provider/model-
 import { createConversationSpeedRegistry } from './features/provider/speed/conversation-speed.ts'
 import { registerOpenAICodexFastModeDefaults } from './features/provider/speed/fast-mode-defaults.ts'
 import { OpenAICodexQuotaState } from './features/quota/state.ts'
-import { quotaTool } from './features/quota/tool.ts'
 import { OpenAICodexSearchProvider } from './features/search/provider.ts'
 import { selectOpenAICodexSearchRoute } from './features/search/route-override.ts'
 import { Config, configValue } from './config.ts'
@@ -63,9 +60,7 @@ declare module '@deepseek-ai/cordis' {
 
 export { Config } from './config.ts'
 export type { VolatileConfig } from './config.ts'
-export { VIEW_IMAGE_TOOL_NAME } from './features/images/tools/view-tool.ts'
 export { IMAGE_GENERATE_TOOL_NAME } from './features/images/tools/generate-tool.ts'
-export { QUOTA_TOOL_NAME } from './features/quota/tool.ts'
 export {
   assertNoOpenAICodexProviderConflict,
   diagnoseOpenAICodex,
@@ -75,29 +70,6 @@ export type {
   OpenAICodexDiagnosticOptions,
   OpenAICodexDiagnosticReport,
 } from './platform/runtime/doctor.ts'
-export {
-  assessCompatibility,
-  COMPATIBILITY_CONTRACT,
-  COMPATIBILITY_PACKAGES,
-  COMPATIBILITY_SCHEMA_VERSION,
-  detectCompatibility,
-  DSH_PLUGIN_API_PACKAGES,
-  PI_AI_PACKAGE,
-  SUPPORTED_DSH_PLUGIN_API_VERSION,
-  SUPPORTED_DSH_PLUGIN_API_VERSIONS,
-  SUPPORTED_DSH_PLUGIN_API_RANGE,
-  SUPPORTED_NODE_RANGE,
-  SUPPORTED_PI_AI_RANGE,
-  evaluateCompatibility,
-} from './platform/runtime/compatibility.ts'
-export type {
-  CompatibilityDetectionOptions,
-  CompatibilityEntry,
-  CompatibilityEvaluationInput,
-  CompatibilityPackageName,
-  CompatibilityReport,
-  CompatibilityStatus,
-} from './platform/runtime/compatibility.ts'
 export { OPENAI_CODEX_USAGE_URL, parseOpenAICodexUsage, readOpenAICodexRateLimits } from './features/quota/usage.ts'
 export type {
   OpenAICodexCredits,
@@ -224,7 +196,6 @@ function readSettingsInput(config: Config | VolatileConfig): OpenAICodexSettings
     enableNativeCompaction: configValue(config.enableNativeCompaction),
     enableNewSessionFastMode: configValue(config.enableNewSessionFastMode),
     enableNewSubagentFastMode: configValue(config.enableNewSubagentFastMode),
-    enableImageTool: configValue(config.enableImageTool),
     enableImageGeneration: configValue(config.enableImageGeneration),
     imageModelHint: configValue(config.imageModelHint),
     searchModel: configValue(config.searchModel),
@@ -261,7 +232,6 @@ export function apply(ctx: Context, config: Config | VolatileConfig): void {
     ctx,
     fastMode,
     () => resolveOpenAICodexSettings(current()),
-    async () => (await credentials.accounts()).find(account => account.active)?.accountKey,
   )
   const quota = new OpenAICodexQuotaState({
     credentials,
@@ -269,9 +239,6 @@ export function apply(ctx: Context, config: Config | VolatileConfig): void {
     backendRequests,
     resolveProxyUrl: resolveProviderProxyUrl,
   })
-  if (config.enableQuotaTool === true) {
-    ctx.inject(['tools'], toolCtx => toolCtx.tools.register(quotaTool(quota)))
-  }
   assertNoOpenAICodexProviderConflict(ctx.llm.listProviders().map(provider => provider.id))
   new OpenAICodexTransport(
     ctx,
@@ -290,7 +257,6 @@ export function apply(ctx: Context, config: Config | VolatileConfig): void {
     nativeCompactionEnabled: () => resolveOpenAICodexSettings(current()).enableNativeCompaction,
     backendRequests,
     imageEditingEnabled: () => resolveOpenAICodexSettings(current()).enableImageGeneration,
-    preflightActivity: config.preflightActivity,
     retryPolicyConfig: config.retryPolicy,
     resolveReasoningEffort: () => resolveOpenAICodexSettings(current()).reasoningEffort,
   })
@@ -323,8 +289,6 @@ export function apply(ctx: Context, config: Config | VolatileConfig): void {
   let searchFiber: Fiber | undefined
   let searchRegistration: object | undefined
   let searchTail = Promise.resolve()
-  let imageFiber: Fiber | undefined
-  let imageTail = Promise.resolve()
   let imageGenerationFiber: Fiber | undefined
   let imageGenerationTail = Promise.resolve()
 
@@ -380,23 +344,6 @@ export function apply(ctx: Context, config: Config | VolatileConfig): void {
     })
   }
 
-  const reconcileImageTool = async (): Promise<void> => {
-    if (stopped) return
-    const enabled = resolveOpenAICodexSettings(current()).enableImageTool
-    if (enabled === (imageFiber !== undefined)) return
-    const previous = imageFiber
-    imageFiber = undefined
-    if (previous !== undefined) await previous.dispose()
-    if (stopped || !enabled) return
-    const fiber = ctx.inject(['tools', 'fs', 'attachments'], toolCtx => toolCtx.tools.register(viewImageTool(toolCtx)))
-    imageFiber = fiber
-    void Promise.resolve(fiber).catch((error: unknown) => {
-      if (imageFiber === fiber) imageFiber = undefined
-      ctx.logger.error('dsh-codex-connect: optional view_image tool failed to activate')
-      ctx.logger.error(error)
-    })
-  }
-
   const reconcileImageGeneration = async (): Promise<void> => {
     if (stopped) return
     const enabled = resolveOpenAICodexSettings(current()).enableImageGeneration
@@ -419,10 +366,6 @@ export function apply(ctx: Context, config: Config | VolatileConfig): void {
       ctx.logger.error('dsh-codex-connect: could not apply the updated search configuration')
       ctx.logger.error(error)
     })
-    imageTail = imageTail.then(reconcileImageTool, reconcileImageTool).catch((error: unknown) => {
-      ctx.logger.error('dsh-codex-connect: could not apply the updated image-tool configuration')
-      ctx.logger.error(error)
-    })
     imageGenerationTail = imageGenerationTail.then(reconcileImageGeneration, reconcileImageGeneration).catch((error: unknown) => {
       ctx.logger.error('dsh-codex-connect: could not apply the updated image-generation configuration')
       ctx.logger.error(error)
@@ -433,16 +376,13 @@ export function apply(ctx: Context, config: Config | VolatileConfig): void {
     stopped = true
     backendRequests.dispose()
     await quota.dispose()
-    await Promise.all([searchTail, imageTail, imageGenerationTail])
+    await Promise.all([searchTail, imageGenerationTail])
     const search = searchFiber
-    const image = imageFiber
     const imageGeneration = imageGenerationFiber
     searchFiber = undefined
-    imageFiber = undefined
     imageGenerationFiber = undefined
     await Promise.allSettled([
       search?.dispose() ?? Promise.resolve(),
-      image?.dispose() ?? Promise.resolve(),
       imageGeneration?.dispose() ?? Promise.resolve(),
     ])
     await proxyManager.dispose()

@@ -447,13 +447,13 @@ describe('OpenAI Codex Plugin configuration card', () => {
     render(<OpenAICodexConfiguration scope={scope} t={t} activeModule="capabilities" />)
     const top = await screen.findByRole('combobox', { name: en.newSessionSpeedMode })
     const child = screen.getByRole('combobox', { name: en.newSubagentSpeedMode })
-    fireEvent.change(top, { target: { value: 'ultrafast' } })
+    fireEvent.change(top, { target: { value: 'fast' } })
     fireEvent.change(child, { target: { value: 'standard' } })
     expect((screen.getByRole('checkbox', { name: /Fast Mode for new conversations/u }) as HTMLInputElement).disabled).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: en.save }))
     expect(await screen.findByText(en.settingsSaved)).toBeTruthy()
     expect(mutate).toHaveBeenLastCalledWith([
-      { op: 'set', path: ['newSessionSpeedMode'], value: 'ultrafast' },
+      { op: 'set', path: ['newSessionSpeedMode'], value: 'fast' },
       { op: 'set', path: ['newSubagentSpeedMode'], value: 'standard' },
     ], 0)
     fireEvent.change(top, { target: { value: '' } })
