@@ -1,12 +1,12 @@
 /** Real Host session/event feed and real plugin HTTP contracts, all synthetic. */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import Sessions, { SessionId } from '@deepseek-ai/dsh-session'
-import { httpRouteTestContext } from '../http-route-test-context.ts'
-import { createConversationSpeedRegistry } from '../../src/conversation-speed.ts'
-import { registerOpenAICodexAuthRoutes } from '../../src/auth-routes.ts'
-import { openAICodexAccountKey } from '../../src/store.ts'
-import type { OpenAICodexCredentialStore } from '../../src/store.ts'
-import type { OpenAICodexTrustedOriginsStore } from '../../src/trusted-origins.ts'
+import { httpRouteTestContext } from './http-route-test-context.ts'
+import { createConversationSpeedRegistry } from '../../src/features/provider/speed/conversation-speed.ts'
+import { registerOpenAICodexAuthRoutes } from '../../src/features/auth/routes.ts'
+import { openAICodexAccountKey } from '../../src/platform/auth/store.ts'
+import type { OpenAICodexCredentialStore } from '../../src/platform/auth/store.ts'
+import type { OpenAICodexTrustedOriginsStore } from '../../src/platform/http/trusted-origins.ts'
 
 export async function speedLifecycleFixture() {
   const f = httpRouteTestContext()

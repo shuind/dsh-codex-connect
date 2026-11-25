@@ -7,17 +7,13 @@ import { basename, isAbsolute } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
 import type { AuthEvent, AuthPrompt } from '@earendil-works/pi-ai'
-import { CODEX_CONNECT_VERSION, diagnoseOpenAICodex } from './doctor.ts'
-import { loginOpenAICodex, logoutOpenAICodex, openAICodexAuthStatus } from './auth.ts'
-import { migrateOpenAICodexSearchHistory } from './history-migration.ts'
-import { openAICodexAuthPath } from './store.ts'
-import { normalizeTrustedOrigin, OpenAICodexTrustedOriginsStore } from './trusted-origins.ts'
-import { runCapabilityCommand } from './capability-cli.ts'
-import { runAutoReviewProbeCommand } from './auto-review-cli.ts'
-import { runRequestMetricsCommand } from './request-metrics-cli.ts'
-import { publicAuthError as safeMessage } from './auth-error.ts'
+import { publicAuthError as safeMessage } from './shared/auth.ts'
+import { loginOpenAICodex, logoutOpenAICodex, openAICodexAuthStatus } from './platform/auth/oauth-client.ts'
+import { openAICodexAuthPath } from './platform/auth/store.ts'
+import { normalizeTrustedOrigin, OpenAICodexTrustedOriginsStore } from './platform/http/trusted-origins.ts'
+import { CODEX_CONNECT_VERSION, diagnoseOpenAICodex } from './platform/runtime/doctor.ts'
 
-type Action = 'doctor' | 'login' | 'logout' | 'migrate-history' | 'status' | 'trust-origin' | 'trusted-origins' | 'untrust-origin'
+type Action = 'doctor' | 'login' | 'logout' | 'status' | 'trust-origin' | 'trusted-origins' | 'untrust-origin'
 type DiagnosticReport = Awaited<ReturnType<typeof diagnoseOpenAICodex>>
 
 const JSON_SCHEMA_VERSION = 1
@@ -89,27 +85,19 @@ function printHelp(): void {
   process.stdout.write([
     'Usage: dsh-codex-connect <doctor|login|logout|status> [--device-code|--json]',
     '       dsh-codex-connect doctor [--install-anchor <absolute-dsh-package.json>] [--json]',
-    '       dsh-codex-connect migrate-history [--apply --confirm-stopped] [--root <path>] [--json]',
     '       dsh-codex-connect trust-origin <origin>',
     '       dsh-codex-connect trusted-origins [--json]',
     '       dsh-codex-connect untrust-origin <origin>',
-    '       dsh-codex-connect capabilities [--model <catalog-id>] [--probe] [--proxy <http(s)-origin>] [--timeout-ms <1..60000>] [--json]',
-    '       dsh-codex-connect auto-review-probe [--proxy <http(s)-origin>] [--timeout-ms <1..60000>] [--json]',
-    '       dsh-codex-connect metrics --file <journal.jsonl> [--file <journal.jsonl>] [--session <DSH-session-id>] [--json]',
     '',
-    '  doctor         inspect secret-free local package and OAuth file metadata, without observing a running Host',
-    '  --install-anchor selects explicit DSH installation metadata; it does not prove that Host is running',
-    '  For a read-only invocation, run the installed bin directly with Node; package-manager wrappers may reconcile dependencies.',
-    '  auto-review-probe test the hidden approval reviewer with one synthetic no-op',
-    '  login          sign in with a separate ChatGPT OAuth session',
-    '  logout         remove the dsh credential without changing ~/.codex',
-    '  migrate-history find or repair Alpha 4.10 private search events (dry-run by default)',
-    '  status         report non-secret dsh credential state',
-    '  trust-origin   allow one exact browser origin to reach Web OAuth routes',
+    '  doctor          inspect secret-free local package and OAuth file metadata',
+    '  login           sign in with a separate ChatGPT OAuth session',
+    '  logout          remove the dsh credential without changing ~/.codex',
+    '  status          report non-secret dsh credential state',
+    '  trust-origin    allow one exact browser origin to reach Web OAuth routes',
     '  trusted-origins list the currently allowed browser origins',
-    '  untrust-origin remove one exact browser origin from the allowlist',
-    '  --device-code  use headless device-code login (login only)',
-    '  --json         emit one JSON document (doctor/status/capabilities/auto-review-probe/trusted-origins/migrate-history)',
+    '  untrust-origin  remove one exact browser origin from the allowlist',
+    '  --device-code   use headless device-code login (login only)',
+    '  --json          emit one JSON document (doctor/status/trusted-origins)',
     '',
   ].join('\n'))
 }
@@ -119,8 +107,7 @@ function doctorExitCode(report: DiagnosticReport): number {
     || report.credentialFile.state === 'not-a-regular-file'
     || report.credentialFile.state === 'unreadable-metadata'
   const compatibilityFailure = report.compatibility !== undefined && report.compatibility.status !== 'compatible'
-  const identityFailure = report.identity !== undefined && report.identity.pluginVersionState !== 'match'
-  return credentialFailure || compatibilityFailure || identityFailure ? 1 : 0
+  return credentialFailure || compatibilityFailure ? 1 : 0
 }
 
 /** Project the diagnostic report without its absolute credential pathname. */
@@ -139,7 +126,6 @@ function doctorJson(report: DiagnosticReport): Record<string, unknown> {
     hints: report.hints,
   }
   if (report.compatibility !== undefined) result.compatibility = report.compatibility
-  if (report.identity !== undefined) result.identity = report.identity
   return result
 }
 
@@ -154,12 +140,9 @@ export async function run(argv: readonly string[]): Promise<number> {
     return 0
   }
   const [rawAction, ...flags] = argv
-  if (rawAction === 'capabilities') return runCapabilityCommand(flags)
-  if (rawAction === 'auto-review-probe') return runAutoReviewProbeCommand(flags)
-  if (rawAction === 'metrics') return runRequestMetricsCommand(flags)
-  const actions: readonly Action[] = ['doctor', 'login', 'logout', 'migrate-history', 'status', 'trust-origin', 'trusted-origins', 'untrust-origin']
+  const actions: readonly Action[] = ['doctor', 'login', 'logout', 'status', 'trust-origin', 'trusted-origins', 'untrust-origin']
   if (!actions.includes(rawAction as Action)) {
-    process.stderr.write(`dsh-codex-connect: expected doctor, login, logout, migrate-history, status, trust-origin, trusted-origins, or untrust-origin; got ${JSON.stringify(rawAction)}\n`)
+    process.stderr.write(`dsh-codex-connect: expected doctor, login, logout, status, trust-origin, trusted-origins, or untrust-origin; got ${JSON.stringify(rawAction)}\n`)
     return 1
   }
   const action = rawAction as Action
@@ -167,10 +150,7 @@ export async function run(argv: readonly string[]): Promise<number> {
   const optionFlags = action === 'trust-origin' || action === 'untrust-origin' ? flags.slice(1) : flags
   const deviceCode = optionFlags.includes('--device-code')
   const jsonOutput = optionFlags.includes('--json')
-  let migrationRoot: string | undefined
   let installAnchor: string | undefined
-  let migrationApply = false
-  let migrationConfirmStopped = false
   const unknown: string[] = []
   if (action === 'doctor') {
     for (let index = 0; index < optionFlags.length; index += 1) {
@@ -186,34 +166,12 @@ export async function run(argv: readonly string[]): Promise<number> {
       }
       unknown.push(flag ?? '')
     }
-  } else if (action === 'migrate-history') {
-    for (let index = 0; index < optionFlags.length; index += 1) {
-      const flag = optionFlags[index]
-      if (flag === '--apply') {
-        if (migrationApply) unknown.push(flag ?? '')
-        migrationApply = true
-      } else if (flag === '--confirm-stopped') {
-        if (migrationConfirmStopped) unknown.push(flag ?? '')
-        migrationConfirmStopped = true
-      } else if (flag === '--json') {
-        // Handled by the common output flag below.
-      } else if (flag === '--root'
-        && migrationRoot === undefined
-        && optionFlags[index + 1] !== undefined
-        && !optionFlags[index + 1]?.startsWith('--')) {
-        migrationRoot = optionFlags[index + 1]
-        index += 1
-      } else {
-        unknown.push(flag ?? '')
-      }
-    }
   } else {
     unknown.push(...optionFlags.filter(flag => flag !== '--device-code' && flag !== '--json'))
   }
   if (unknown.length > 0
     || (deviceCode && action !== 'login')
     || (jsonOutput && (action === 'login' || action === 'logout' || deviceCode))
-    || (action === 'migrate-history' && (migrationConfirmStopped && !migrationApply || migrationApply && !migrationConfirmStopped))
     || ((action === 'trust-origin' || action === 'untrust-origin') && (originArgument === undefined || optionFlags.length !== 0))) {
     process.stderr.write(`dsh-codex-connect: invalid options for ${action}\n`)
     return 1
@@ -229,10 +187,6 @@ export async function run(argv: readonly string[]): Promise<number> {
         }
         process.stdout.write([
           `Codex Connect ${report.version} on ${report.node}`,
-          ...report.identity === undefined ? [] : [
-            `Diagnostic scope: ${report.identity.scope}; loaded CLI plugin ${report.identity.loadedPluginVersion}; installed package ${report.identity.installedPluginVersion ?? 'unknown'} (${report.identity.pluginVersionState})`,
-            'Running Host and browser client: not observed by this standalone command',
-          ],
           `OAuth file metadata: ${report.credentialFile.state} (${report.credentialFile.path})`,
           ...(report.compatibility === undefined ? [] : [
             `Compatibility: ${report.compatibility.status} (Node ${report.compatibility.node.installed ?? 'unknown'}; DSH API ${report.compatibility.packages['@deepseek-ai/dsh-llm'].installed ?? 'unknown'}; pi-ai ${report.compatibility.packages['@earendil-works/pi-ai'].installed ?? 'unknown'})`,
@@ -244,29 +198,12 @@ export async function run(argv: readonly string[]): Promise<number> {
         ].join('\n'))
         return doctorExitCode(report)
       }
-      case 'migrate-history': {
-        const result = await migrateOpenAICodexSearchHistory({
-          apply: migrationApply,
-          ...migrationConfirmStopped ? { confirmStopped: true } : {},
-          ...migrationRoot === undefined ? {} : { root: migrationRoot },
-        })
-        if (jsonOutput) {
-          printJson({ schemaVersion: JSON_SCHEMA_VERSION, ...result })
-        } else {
-          const verb = result.mode === 'apply' ? 'Repaired' : 'Found'
-          process.stdout.write(`${verb} ${result.changedEvents} legacy Codex search event(s) in ${result.changedFiles} session file(s) under ${result.root}.\n`)
-          if (result.mode === 'dry-run' && result.changedEvents > 0) {
-            process.stdout.write('Stop DSH, then run again with --apply --confirm-stopped to create backups and repair these histories.\n')
-          }
-        }
-        return 0
-      }
       case 'status': {
         const status = await openAICodexAuthStatus()
         if (jsonOutput) {
           printJson({
             schemaVersion: JSON_SCHEMA_VERSION,
-            package: 'dsh-codex-connect',
+            package: '@shuind/dsh-codex-connect',
             version: CODEX_CONNECT_VERSION,
             status: status.authenticated ? 'signed-in' : 'signed-out',
           })
@@ -285,11 +222,8 @@ export async function run(argv: readonly string[]): Promise<number> {
       }
       case 'trusted-origins': {
         const origins = await new OpenAICodexTrustedOriginsStore().list()
-        if (jsonOutput) {
-          printJson({ schemaVersion: JSON_SCHEMA_VERSION, origins })
-        } else {
-          for (const origin of origins) process.stdout.write(`${origin}\n`)
-        }
+        if (jsonOutput) printJson({ schemaVersion: JSON_SCHEMA_VERSION, origins })
+        else for (const origin of origins) process.stdout.write(`${origin}\n`)
         return 0
       }
       case 'trust-origin': {

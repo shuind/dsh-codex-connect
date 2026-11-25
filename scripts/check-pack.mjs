@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
-import { validateLibArtifactInventory } from './pack-lib-inventory.mjs'
+import { validateLibArtifactInventory } from './lib/pack-lib-inventory.mjs'
 
 const options = {
   cwd: new URL('..', import.meta.url),

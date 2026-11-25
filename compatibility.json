@@ -4,19 +4,8 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "dshPluginApi": {
-    "version": "0.2.1-alpha.1",
+    "version": "0.2.2-rc.1",
     "versions": [
-      "0.2.1-alpha.1",
-      "0.2.1-alpha.2",
-      "0.2.1-alpha.3",
-      "0.2.1-alpha.4",
-      "0.2.1-alpha.5",
-      "0.2.1-rc.1",
-      "0.2.1-rc.2",
-      "0.2.1-rc.3",
-      "0.2.1-rc.4",
-      "0.2.1-rc.5",
-      "0.2.2-alpha.3",
       "0.2.2-rc.1",
       "0.2.2-rc.2",
       "0.2.2-rc.3",
@@ -28,12 +17,12 @@
       "dshVersions": ["0.2.2-rc.4", "0.2.2-rc.5"]
     },
     "cordis": {
-      "range": "^4.1.0",
-      "dshVersions": ["0.2.2-rc.4", "0.2.2-rc.5"]
+      "range": "~4.1.0",
+      "dshVersions": ["0.2.2-rc.1", "0.2.2-rc.2", "0.2.2-rc.3", "0.2.2-rc.4", "0.2.2-rc.5"]
     },
     "admission": {
       "minimum": "0.2.2-rc.1",
-      "before": "0.3.0-0",
+      "before": "0.2.3",
       "denied": []
     },
     "packages": [
@@ -60,6 +49,6 @@
   },
   "piAi": {
     "package": "@earendil-works/pi-ai",
-    "version": "0.85.1"
+    "version": "^1.5.0"
   }
 }

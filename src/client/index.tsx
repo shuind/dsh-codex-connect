@@ -6,39 +6,39 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-models/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
+import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-connection/client'
-// Type-only: pulls the conversation input-region SlotMap declaration.
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
-// Type-only: pulls the independent completed-Turn tail SlotMap declaration.
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
-// Type-only: pulls ctx.modelDirectories and its session directory contract.
 import type {} from '@deepseek-ai/dsh-client-ui-model-selection/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
-import { OPENAI_CODEX_SETTINGS_NAMESPACE } from '../settings-contract.ts'
-import type { OpenAICodexSettingsConfig } from '../settings-contract.ts'
-import { OpenAICodexPluginCard } from './OpenAICodexPluginCard.tsx'
-import type { OpenAICodexPluginCardInjected } from './OpenAICodexPluginCard.tsx'
-import { OpenAICodexQuotaIndicator } from './OpenAICodexQuotaIndicator.tsx'
-import type { OpenAICodexQuotaIndicatorInjected } from './OpenAICodexQuotaIndicator.tsx'
-import { OpenAICodexFastModeToggle } from './OpenAICodexFastModeToggle.tsx'
-import type { OpenAICodexFastModeToggleInjected } from './OpenAICodexFastModeToggle.tsx'
-import { en, zh } from './locales.ts'
-import type { OpenAICodexSettingsKey } from './locales.ts'
-import { CodexImageToolView } from './CodexImageToolView.tsx'
-import type { CodexImageToolViewInjected } from './CodexImageToolView.tsx'
-import { CodexImageTurnTail } from './CodexImageTurnTail.tsx'
-import type { CodexImageTurnTailProps } from './CodexImageTurnTail.tsx'
-import { OpenAICodexUpdateOverlay } from './OpenAICodexUpdateNotice.tsx'
-import { OpenAICodexUpdateStore } from './update-store.ts'
+import { OPENAI_CODEX_SETTINGS_NAMESPACE } from '../shared/settings.ts'
+import type { OpenAICodexSettingsConfig } from '../shared/settings.ts'
 import { CODEX_CONNECT_VERSION } from '../version.ts'
-import { OpenAICodexAccountStore } from './account-store.ts'
-import { OpenAICodexModelsCard } from './OpenAICodexModelsCard.tsx'
-import { PublishedAdaptiveTaskControl as AdaptiveTaskControl } from './PublishedAdaptiveTaskControl.tsx'
-import { OpenAICodexConfigForm } from './config-form.ts'
+import { en, zh } from './locales/index.ts'
+import type { OpenAICodexSettingsKey } from './locales/index.ts'
+import { OpenAICodexAccountStore } from './shared/account-store.ts'
+import { OpenAICodexConfigForm } from './shared/config-form.ts'
+import { OpenAICodexUpdateStore } from './shared/update-store.ts'
+import {
+  OpenAICodexBundleConfig,
+  OpenAICodexModelsCard,
+  OpenAICodexPluginCard,
+} from './settings/OpenAICodexCards.tsx'
+import type { OpenAICodexPluginCardInjected } from './settings/OpenAICodexCards.tsx'
+import { OpenAICodexQuotaIndicator } from './speed/OpenAICodexQuotaIndicator.tsx'
+import type { OpenAICodexQuotaIndicatorInjected } from './speed/OpenAICodexQuotaIndicator.tsx'
+import { OpenAICodexFastModeToggle } from './speed/OpenAICodexFastModeToggle.tsx'
+import type { OpenAICodexFastModeToggleInjected } from './speed/OpenAICodexFastModeToggle.tsx'
+import { CodexImageToolView } from './images/CodexImageToolView.tsx'
+import type { CodexImageToolViewInjected } from './images/CodexImageToolView.tsx'
+import { CodexImageTurnTail } from './images/CodexImageTurnTail.tsx'
+import type { CodexImageTurnTailProps } from './images/CodexImageTurnTail.tsx'
+import { OpenAICodexUpdateOverlay } from './notices/OpenAICodexUpdateNotice.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -69,14 +69,30 @@ export function apply(ctx: ClientContext): void {
     ctx.configForms.describe(),
   )
   ctx.effect(() => ctx.configForms.whileServed([OPENAI_CODEX_SETTINGS_NAMESPACE], () => {
-    return ctx.slots.register({
-      name: 'settings.plugins.tab',
-      id: 'codex-connect',
-      order: 40,
-      locale: namespace,
-      label: () => t('title'),
-      inject: (): OpenAICodexPluginCardInjected => ({ t, configScope, updater, account }),
-    }, OpenAICodexPluginCard)
+    const disposers: Array<() => void> = []
+    const dispose = (): void => {
+      for (const off of disposers.splice(0).reverse()) off()
+    }
+    try {
+      disposers.push(ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
+        name: 'settings.plugins.tab',
+        id: 'codex-connect',
+        order: 40,
+        locale: namespace,
+        label: () => t('title'),
+        inject: (): OpenAICodexPluginCardInjected => ({ t, configScope, updater, account }),
+      }, OpenAICodexPluginCard)))
+      disposers.push(ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({
+        name: 'plugins.bundle.config',
+        key: '@shuind/dsh-codex-connect',
+        locale: namespace,
+        inject: (): OpenAICodexPluginCardInjected => ({ t, configScope, updater, account }),
+      }, OpenAICodexBundleConfig)))
+      return dispose
+    } catch (error) {
+      dispose()
+      throw error
+    }
   }), 'dsh-codex-connect: settings page while served')
 
   ctx.slots.inject('settings.models.footer', () => ctx.slots.register({
@@ -93,13 +109,6 @@ export function apply(ctx: ClientContext): void {
     locale: namespace,
     inject: (): { updater: OpenAICodexUpdateStore } => ({ updater }),
   }, OpenAICodexUpdateOverlay))
-
-  ctx.slots.inject('conversation.input.right', () => ctx.slots.register({
-    name: 'conversation.input.right',
-    id: 'codex-connect-task-models',
-    order: 30,
-    inject: () => ({ language: t('adaptiveTaskLanguage') }),
-  }, AdaptiveTaskControl))
 
   ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
     name: 'tool.call.toolview',

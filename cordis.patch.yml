@@ -2,12 +2,10 @@
 # web-search route. Optional capabilities require explicit profile config.
 - insert:
     - id: llm-openai-codex
-      name: dsh-codex-connect
+      name: "@shuind/dsh-codex-connect"
       config:
         enableProxy: false
         enableSearch: false
-        enableReserveFallback: false
         enableNativeCompaction: false
         enableImageTool: false
         enableImageGeneration: false
-        enableAutoReview: false

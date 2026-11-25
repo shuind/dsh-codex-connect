@@ -1,0 +1,42 @@
+/** Shared inline styles for Codex Connect settings panels. */
+import type { CSSProperties } from 'react'
+
+export const sectionStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 18, borderTop: '1px solid var(--dsw-alias-border-l2)' }
+export const headingStyle: CSSProperties = { margin: 0, fontSize: 14, lineHeight: '20px', fontWeight: 600, color: 'var(--dsw-alias-label-primary)' }
+export const bodyStyle: CSSProperties = { margin: 0, fontSize: 13, lineHeight: '20px', color: 'var(--dsw-alias-label-secondary)' }
+export const accountBodyStyle: CSSProperties = { margin: 0, fontSize: 14, lineHeight: '22px', color: 'var(--dsw-alias-label-secondary)' }
+export const fieldsetStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 13, margin: 0, padding: 0, border: 0 }
+export const modelListStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 10 }
+export const modelRowStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 9, minHeight: 30, fontSize: 13, color: 'var(--dsw-alias-label-primary)', cursor: 'pointer' }
+export const modelIdStyle: CSSProperties = { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12, color: 'var(--dsw-alias-label-secondary)' }
+export const toggleRowStyle: CSSProperties = { display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }
+export const toggleCopyStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 2 }
+export const labelStyle: CSSProperties = { fontSize: 13, lineHeight: '20px', fontWeight: 500, color: 'var(--dsw-alias-label-primary)' }
+export const formGridStyle: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 }
+export const formFieldStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 6 }
+export const controlStyle: CSSProperties = { boxSizing: 'border-box', width: '100%', minHeight: 36, padding: '7px 10px', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 8, background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-primary)', font: 'inherit', fontSize: 13 }
+export const actionsStyle: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }
+export const buttonsStyle: CSSProperties = { display: 'flex', gap: 8 }
+export const buttonStyle: CSSProperties = { boxSizing: 'border-box', minHeight: 34, padding: '6px 14px', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 18, background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-primary)', font: 'inherit', fontSize: 13, cursor: 'pointer' }
+export const primaryButtonStyle: CSSProperties = { ...buttonStyle, borderColor: 'var(--dsw-alias-button-primary-fill)', background: 'var(--dsw-alias-button-primary-fill)', color: 'var(--dsw-alias-label-primary-foreground)' }
+export const accountButtonStyle: CSSProperties = { ...buttonStyle, fontSize: 14 }
+export const accountPrimaryButtonStyle: CSSProperties = { ...primaryButtonStyle, fontSize: 14 }
+export const dangerButtonStyle: CSSProperties = { ...accountButtonStyle, color: 'var(--dsw-alias-state-error-primary, #d92d20)' }
+export const proxyButtonStyle: CSSProperties = { ...buttonStyle, minHeight: 44 }
+export const primaryProxyButtonStyle: CSSProperties = { ...primaryButtonStyle, minHeight: 44 }
+export const errorStyle: CSSProperties = { ...bodyStyle, color: 'var(--dsw-alias-state-error-primary)' }
+export const accountErrorStyle: CSSProperties = { ...accountBodyStyle, color: 'var(--dsw-alias-state-error-primary)' }
+export const successStyle: CSSProperties = { ...bodyStyle, color: 'var(--dsw-alias-state-success-primary, #16825d)' }
+export const badgeStyle: CSSProperties = { display: 'inline-flex', alignItems: 'center', minHeight: 18, padding: '0 6px', borderRadius: 999, background: 'var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-layer-1))', color: 'var(--dsw-alias-label-secondary)', fontSize: 11, lineHeight: '18px', fontWeight: 500 }
+export const connectionCardStyle: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14, padding: '14px 16px', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 10, background: 'var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-layer-1))' }
+export const candidateStyle: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, minHeight: 64, padding: '10px 12px', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 10 }
+export const statePillStyle: CSSProperties = { ...bodyStyle, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 32, padding: '4px 10px', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 999, background: 'var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-layer-1))', whiteSpace: 'nowrap' }
+export const proxyTabsStyle: CSSProperties = { display: 'inline-flex', alignSelf: 'flex-start', padding: 3, border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 10, background: 'var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-layer-1))' }
+export const proxyTabStyle: CSSProperties = { boxSizing: 'border-box', minHeight: 44, padding: '8px 14px', border: 0, borderRadius: 7, background: 'transparent', color: 'var(--dsw-alias-label-secondary)', font: 'inherit', fontSize: 13, cursor: 'pointer' }
+export const activeProxyTabStyle: CSSProperties = { ...proxyTabStyle, background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-primary)', boxShadow: '0 1px 3px rgb(0 0 0 / 8%)' }
+export const pendingStyle: CSSProperties = { ...bodyStyle, padding: '9px 12px', borderRadius: 8, background: 'var(--dsw-alias-state-warning-bg, #fff7df)', color: 'var(--dsw-alias-state-warning-primary, #8a5a00)' }
+export const localModuleTabsStyle: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8 }
+export const localModuleTabStyle: CSSProperties = { ...buttonStyle, minWidth: 0, minHeight: 44, borderRadius: 10, overflowWrap: 'anywhere' }
+export const activeLocalModuleTabStyle: CSSProperties = { ...localModuleTabStyle, border: '1px solid var(--dsw-alias-button-primary-fill)', background: 'var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-layer-1))', color: 'var(--dsw-alias-label-primary)' }
+export const rowStyle: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }
+export const quotaTitleStyle: CSSProperties = { margin: 0, fontSize: 14, lineHeight: '20px', fontWeight: 600, color: 'var(--dsw-alias-label-primary)' }

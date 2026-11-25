@@ -8,7 +8,7 @@ const eslint = new ESLint({
     languageOptions: { parserOptions: { disallowAutomaticSingleRunInference: true } },
   },
 })
-for (const filePath of ['src/version.ts', 'src/client/account-store.ts']) {
+for (const filePath of ['src/version.ts', 'src/client/shared/account-store.ts']) {
   for (const [code, rule] of [
     ['export function broken(): void { Promise.resolve(1) }', '@typescript-eslint/no-floating-promises'],
     ['export function broken(): void { if (Promise.resolve(true)) { console.log(1) } }', '@typescript-eslint/no-misused-promises'],

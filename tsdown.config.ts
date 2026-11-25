@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import type { UserConfig } from 'tsdown'
 
-const PLUGIN_ID = 'dsh-codex-connect'
+const PLUGIN_ID = '@shuind/dsh-codex-connect'
 const PACKAGE_VERSION = (JSON.parse(
   readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
 ) as { version: string }).version
@@ -45,7 +45,7 @@ export default [
     // Keep dispatcher preservation ahead of external providers' initialization.
     outputOptions: {
       codeSplitting: {
-        groups: [{ name: 'undici-runtime', test: /[\\/]src[\\/]undici-runtime\.ts$/u }],
+        groups: [{ name: 'undici-runtime', test: /[\\/]src[\\/]platform[\\/]http[\\/]undici-runtime\.ts$/u }],
       },
     },
     define: {

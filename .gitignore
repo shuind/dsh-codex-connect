@@ -1,6 +1,5 @@
 node_modules/
+lib/
 *.tsbuildinfo
+*.tgz
 .openai-codex-auth.json
-.playwright-cli/
-.issue211-artifacts/
-.remember-acceptance-runs/

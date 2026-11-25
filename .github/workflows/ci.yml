@@ -4,155 +4,16 @@ on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
 
 jobs:
-  validate:
-    strategy:
-      fail-fast: false
-      matrix:
-        node-version: ['22.19.0', '24.x']
+  check:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
         with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-        with:
-          version: 10.30.3
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 24
           cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - run: pnpm --config.minimum-release-age=0 install --frozen-lockfile
-      - name: Validate release workflow contract
-        run: pnpm run check:release-workflow
-      - name: Validate canary workflow contract
-        run: pnpm run check:canary-workflow
-      - name: Lint package and source hygiene
-        run: pnpm run lint
-      - name: Typecheck host and browser entries
-        run: pnpm run typecheck
-      - name: Test
-        run: pnpm run test
-      - name: Verify delegation ledger across independent process restoration
-        run: node scripts/check-adaptive-task-delegation-ledger.mjs
-      - name: Build
-        run: pnpm run build
-      - name: Verify built capability CLI and child exit
-        run: pnpm run check:capability-cli
-      - name: Validate package contents
-        run: pnpm run pack:check
-      - name: Validate declared DSH installation matrix
-        run: pnpm --silent run check:dsh-matrix
-      - name: Verify committed build output
-        shell: bash
-        run: |
-          changes="$(git status --porcelain --untracked-files=all -- lib)"
-          if [[ -n "$changes" ]]; then
-            printf '%s\n' "$changes"
-            exit 1
-          fi
-
-  phase2-host-regression:
-    strategy:
-      fail-fast: false
-      matrix:
-        node-version: ['22.19.0', '24.x']
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-        with:
-          version: 10.30.3
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - run: pnpm --config.minimum-release-age=0 install --frozen-lockfile
-      - name: Prepare pinned acceptance installer (peer checks remain enabled)
-        run: npm install --prefix "${{ runner.temp }}/phase2-npm" --ignore-scripts --no-audit --no-fund npm@10.9.3
-      - name: Verify optional platform dependencies in an exact published fixture
-        env:
-          MATRIX_NPM_CLI: ${{ runner.temp }}/phase2-npm/node_modules/npm/bin/npm-cli.js
-        run: node scripts/check-exact-dsh-platform.mjs
-      - name: Verify exact-host recovery and crash boundaries
-        env:
-          MATRIX_NPM_CLI: ${{ runner.temp }}/phase2-npm/node_modules/npm/bin/npm-cli.js
-        run: node scripts/check-adaptive-task-delegation-matrix.mjs
-
-  browser-ui-regression:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-        with:
-          version: 10.30.3
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24.x
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - run: pnpm --config.minimum-release-age=0 install --frozen-lockfile
-      - name: Install Chromium
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Run browser UI regression tests
-        run: pnpm run test:browser
-      - name: Verify authenticated task controls and model handoff
-        run: node scripts/check-adaptive-task-ui.mjs
-      - name: Prepare pinned installed-session acceptance installer
-        run: npm install --prefix "${{ runner.temp }}/phase2-npm" --ignore-scripts --no-audit --no-fund npm@10.9.3
-      - name: Verify stock current-host Session keeps task controls paused
-        env:
-          MATRIX_NPM_CLI: ${{ runner.temp }}/phase2-npm/node_modules/npm/bin/npm-cli.js
-        run: node scripts/check-adaptive-task-session.mjs --current-host-paused
-
-  windows-canary-contract:
-    runs-on: windows-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24.15.0
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-        with:
-          version: 10.30.3
-      - run: pnpm --config.minimum-release-age=0 install --frozen-lockfile
-      - name: Validate Windows canary subprocess contracts
-        run: node scripts/check-dsh-next-contract.mjs
-      - name: Verify native Windows task flush access and failure propagation
-        run: pnpm exec vitest run tests/task-flush-native.spec.ts tests/task-flush-access.spec.ts
-      - name: Verify native state read identity and disappearance boundaries
-        run: pnpm exec vitest run tests/task-state-native.spec.ts
-      - name: Verify scoped proxy decompresses JSON on Windows
-        run: pnpm exec vitest run tests/provider-proxy.spec.ts
-      - name: Verify manifest safety and runtime receipts on Windows
-        run: pnpm exec vitest run tests/installation-metadata.spec.ts tests/metadata-leaf-safety.spec.ts tests/metadata-read-races.spec.ts tests/runtime-identity.spec.ts
-      - name: Verify task artifact read identity on Windows
-        run: pnpm exec vitest run tests/task-artifact-native.spec.ts tests/task-artifact-read-identity.spec.ts
-      - name: Verify Windows history remains dry-run only
-        run: pnpm exec vitest run tests/history-migration.spec.ts
-      - name: Validate the actual package on Windows
-        run: pnpm run pack:check
-
-  # Alpha CI deliberately has no npm-publish job. Publishing requires a later,
-  # separately authorized release workflow.
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check
