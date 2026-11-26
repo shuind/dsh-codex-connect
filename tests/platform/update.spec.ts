@@ -203,6 +203,15 @@ describe('Codex Connect update checker', () => {
       expect(fromBundled).toBe(pluginDir)
       expect(fromSource).toBe(pluginDir)
       expect(await readInstalledDshVersion(fromBundled)).toBe('0.2.2-rc.5')
+
+      const desktopProfilePlugin = join(root, 'profile', 'node_modules', '@shuind', 'dsh-codex-connect')
+      const desktopResources = join(root, 'electron-resources')
+      const desktopDshDir = join(desktopResources, 'app.asar', 'dsh', 'node_modules', '@deepseek-ai', 'dsh')
+      await mkdir(desktopProfilePlugin, { recursive: true })
+      await mkdir(desktopDshDir, { recursive: true })
+      await writeFile(join(desktopDshDir, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.2.2-rc.5' }))
+      expect(await readInstalledDshVersion(desktopProfilePlugin)).toBeUndefined()
+      expect(await readInstalledDshVersion(desktopProfilePlugin, { resourcesPath: desktopResources })).toBe('0.2.2-rc.5')
     } finally {
       await rm(root, { recursive: true, force: true })
     }

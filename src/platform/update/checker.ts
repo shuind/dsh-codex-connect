@@ -1,7 +1,8 @@
 /** Network update checker: npm dist-tags first, GitHub Releases fallback, with DSH compatibility check. */
 
 import { readFile } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
+import { createRequire } from 'node:module'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   compareOpenAICodexVersions,
@@ -24,7 +25,8 @@ export const OPENAI_CODEX_UPDATE_MAX_METADATA_BYTES = 64 * 1024
 export const OPENAI_CODEX_UPDATE_MAX_RELEASE_BYTES = 64 * 1024
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url))
-const DSH_HOST_VERSION_PACKAGE = '@deepseek-ai/dsh-llm'
+const DSH_HOST_VERSION_PACKAGES = ['@deepseek-ai/dsh-llm', '@deepseek-ai/dsh'] as const
+const DESKTOP_APPLICATION_ROOTS = ['app.asar.unpacked', 'app.asar', 'app'] as const
 const MAX_ROOT_WALK_DEPTH = 6
 
 type FetchImpl = (input: string, init?: RequestInit) => Promise<Response>
@@ -75,21 +77,87 @@ function dependencyRoots(packageDir: string): string[] {
   return roots
 }
 
-/** Read the installed DSH host version from peer package metadata without executing code. */
-export async function readInstalledDshVersion(packageDir?: string): Promise<string | undefined> {
+function runtimeCandidateManifests(resourcesPath?: string, entryScript?: string): string[] {
+  const candidates = new Set<string>()
+  const addNodeModules = (baseDir: string): void => {
+    for (const pkg of DSH_HOST_VERSION_PACKAGES) {
+      candidates.add(join(baseDir, 'node_modules', pkg, 'package.json'))
+    }
+  }
+  if (typeof resourcesPath === 'string' && resourcesPath.length > 0) {
+    for (const appRoot of DESKTOP_APPLICATION_ROOTS) {
+      const base = join(resourcesPath, appRoot)
+      addNodeModules(base)
+      addNodeModules(join(base, 'dsh'))
+    }
+  }
+  if (typeof entryScript === 'string' && entryScript.length > 0) {
+    let current = resolve(dirname(entryScript))
+    for (let depth = 0; depth < 8; depth += 1) {
+      addNodeModules(current)
+      const parent = dirname(current)
+      if (parent === current) break
+      current = parent
+    }
+  }
+  return [...candidates]
+}
+
+async function readDshVersionFromManifest(manifestPath: string): Promise<string | undefined> {
+  try {
+    const raw = await readFile(manifestPath, 'utf8')
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined
+    const record = parsed as Record<string, unknown>
+    if (typeof record['name'] !== 'string'
+      || !(DSH_HOST_VERSION_PACKAGES as readonly string[]).includes(record['name'])
+      || typeof record['version'] !== 'string') {
+      return undefined
+    }
+    const trimmed = record['version'].trim()
+    return parseOpenAICodexVersion(trimmed) !== undefined ? normalizeOpenAICodexVersion(trimmed) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** Read the installed DSH host version from peer or host runtime package metadata without executing code. */
+export async function readInstalledDshVersion(
+  packageDir?: string,
+  runtimePaths?: { resourcesPath?: string; entryScript?: string },
+): Promise<string | undefined> {
   const rootDir = packageDir ?? await resolveOpenAICodexPluginRoot()
   for (const root of dependencyRoots(rootDir)) {
-    try {
-      const raw = await readFile(join(root, DSH_HOST_VERSION_PACKAGE, 'package.json'), 'utf8')
-      const parsed: unknown = JSON.parse(raw)
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) continue
-      const record = parsed as Record<string, unknown>
-      if (record['name'] !== DSH_HOST_VERSION_PACKAGE || typeof record['version'] !== 'string') continue
-      const trimmed = record['version'].trim()
-      if (parseOpenAICodexVersion(trimmed) !== undefined) return normalizeOpenAICodexVersion(trimmed)
-    } catch {
-      continue
+    for (const pkg of DSH_HOST_VERSION_PACKAGES) {
+      const version = await readDshVersionFromManifest(join(root, pkg, 'package.json'))
+      if (version !== undefined) return version
     }
+  }
+  if (packageDir !== undefined && runtimePaths === undefined) return undefined
+
+  if (runtimePaths === undefined) {
+    try {
+      const req = createRequire(import.meta.url)
+      for (const pkg of DSH_HOST_VERSION_PACKAGES) {
+        try {
+          const version = await readDshVersionFromManifest(req.resolve(`${pkg}/package.json`))
+          if (version !== undefined) return version
+        } catch {
+          continue
+        }
+      }
+    } catch {
+      // Ignore resolver failures and fall through to runtime directory candidates.
+    }
+  }
+
+  const resourcesPath = runtimePaths !== undefined
+    ? runtimePaths.resourcesPath
+    : (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
+  const entryScript = runtimePaths !== undefined ? runtimePaths.entryScript : process.argv[1]
+  for (const manifestPath of runtimeCandidateManifests(resourcesPath, entryScript)) {
+    const version = await readDshVersionFromManifest(manifestPath)
+    if (version !== undefined) return version
   }
   return undefined
 }
