@@ -1,3 +1,6 @@
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import {
   checkForOpenAICodexUpdate,
@@ -10,6 +13,8 @@ import {
   openAICodexNpmVersionUrl,
   parseOpenAICodexUpdateResult,
   parseOpenAICodexVersion,
+  readInstalledDshVersion,
+  resolveOpenAICodexPluginRoot,
   satisfiesOpenAICodexDshRange,
 } from '../../src/platform/update/checker.ts'
 
@@ -176,5 +181,30 @@ describe('Codex Connect update checker', () => {
       releaseUrl: 'https://github.com/shuind/dsh-codex-connect/releases/tag/v0.2.1',
       dshCompatible: false,
     })).toBeUndefined()
+  })
+
+  it('resolves the plugin root and installed DSH version from both source and bundled lib layouts', async () => {
+    expect(await readInstalledDshVersion()).toMatch(/^0\.2\.2-rc\.\d+$/u)
+
+    const root = await mkdtemp(join(tmpdir(), 'codex-connect-update-root-'))
+    try {
+      const pluginDir = join(root, 'node_modules', '@shuind', 'dsh-codex-connect')
+      const bundledLibDir = join(pluginDir, 'lib')
+      const sourceUpdateDir = join(pluginDir, 'src', 'platform', 'update')
+      const dshLlmDir = join(root, 'node_modules', '@deepseek-ai', 'dsh-llm')
+      await mkdir(bundledLibDir, { recursive: true })
+      await mkdir(sourceUpdateDir, { recursive: true })
+      await mkdir(dshLlmDir, { recursive: true })
+      await writeFile(join(pluginDir, 'package.json'), JSON.stringify({ name: OPENAI_CODEX_PACKAGE_NAME, version: '0.2.0' }))
+      await writeFile(join(dshLlmDir, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-llm', version: '0.2.2-rc.5' }))
+
+      const fromBundled = await resolveOpenAICodexPluginRoot(bundledLibDir)
+      const fromSource = await resolveOpenAICodexPluginRoot(sourceUpdateDir)
+      expect(fromBundled).toBe(pluginDir)
+      expect(fromSource).toBe(pluginDir)
+      expect(await readInstalledDshVersion(fromBundled)).toBe('0.2.2-rc.5')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })

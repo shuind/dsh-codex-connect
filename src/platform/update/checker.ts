@@ -8,6 +8,7 @@ import {
   normalizeOpenAICodexVersion,
   OPENAI_CODEX_GITHUB_LATEST_RELEASE_URL,
   OPENAI_CODEX_NPM_METADATA_URL,
+  OPENAI_CODEX_PACKAGE_NAME,
   openAICodexGitHubRawPackageUrl,
   openAICodexNpmVersionUrl,
   openAICodexReleaseUrl,
@@ -22,8 +23,9 @@ export const OPENAI_CODEX_UPDATE_TIMEOUT_MS = 8_000
 export const OPENAI_CODEX_UPDATE_MAX_METADATA_BYTES = 64 * 1024
 export const OPENAI_CODEX_UPDATE_MAX_RELEASE_BYTES = 64 * 1024
 
-const PLUGIN_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
+const MODULE_DIR = dirname(fileURLToPath(import.meta.url))
 const DSH_HOST_VERSION_PACKAGE = '@deepseek-ai/dsh-llm'
+const MAX_ROOT_WALK_DEPTH = 6
 
 type FetchImpl = (input: string, init?: RequestInit) => Promise<Response>
 
@@ -39,6 +41,29 @@ type SourceLookupResult =
   | { ok: true; latestVersion: string; source: 'npm' | 'github' }
   | { ok: false; reason: 'registry-unavailable' | 'invalid-registry-response' }
 
+async function isPluginRoot(dir: string): Promise<boolean> {
+  try {
+    const raw = await readFile(join(dir, 'package.json'), 'utf8')
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return false
+    return (parsed as Record<string, unknown>)['name'] === OPENAI_CODEX_PACKAGE_NAME
+  } catch {
+    return false
+  }
+}
+
+/** Walk upward from the current module directory to find this plugin's root in both src and bundled lib layouts. */
+export async function resolveOpenAICodexPluginRoot(startDir = MODULE_DIR): Promise<string> {
+  let current = startDir
+  for (let depth = 0; depth <= MAX_ROOT_WALK_DEPTH; depth += 1) {
+    if (await isPluginRoot(current)) return current
+    const parent = dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+  return startDir
+}
+
 function dependencyRoots(packageDir: string): string[] {
   const roots = [join(packageDir, 'node_modules')]
   const parent = dirname(packageDir)
@@ -51,8 +76,9 @@ function dependencyRoots(packageDir: string): string[] {
 }
 
 /** Read the installed DSH host version from peer package metadata without executing code. */
-export async function readInstalledDshVersion(packageDir = PLUGIN_ROOT): Promise<string | undefined> {
-  for (const root of dependencyRoots(packageDir)) {
+export async function readInstalledDshVersion(packageDir?: string): Promise<string | undefined> {
+  const rootDir = packageDir ?? await resolveOpenAICodexPluginRoot()
+  for (const root of dependencyRoots(rootDir)) {
     try {
       const raw = await readFile(join(root, DSH_HOST_VERSION_PACKAGE, 'package.json'), 'utf8')
       const parsed: unknown = JSON.parse(raw)
