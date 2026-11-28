@@ -6,7 +6,7 @@
 
 > **互斥说明**：本包与原版 `dsh-codex-connect` 注册同一个 `openai-codex` 模型提供方（`id: llm-openai-codex`），**不能同时安装**。
 
-当前版本 `0.2.0` 适配 **DeepSeek Harness `0.2.2-rc.1`–`0.2.2-rc.5`**（`engines.dsh: >=0.2.2-rc.1 <=0.2.2-rc.5`，已在 `0.2.2-rc.5` 上完整验证）。
+当前版本 `0.2.1` 适配 **DeepSeek Harness `0.2.2-rc.1`–`0.2.2-rc.5`**（`engines.dsh: >=0.2.2-rc.1 <=0.2.2-rc.5`，已在 `0.2.2-rc.5` 上完整验证）。
 
 ## 安装
 
@@ -46,7 +46,7 @@ dsh plugin --profile web add @shuind/dsh-codex-connect
   - 输入框右侧可直接切换当前 Codex 对话的速度档位。
 - **按需开启的可选能力（默认全部关闭）**：
   - **Codex 联网搜索（`enableSearch`）**：开启后临时接管当前配置的全局联网搜索，其他模型也可直接调用；停用后自动恢复原路由。内置可折叠的 BrowseComp / FACTS Search V2 准确率参考与一键选用。
-  - **GPT Image 图片生成与编辑（`enableImageGeneration`）**：注册生图与修图工具，任何支持工具调用的模型（包括 DeepSeek）都可直接调用，无需切换聊天模型；支持 `GPT-Image-2.6 Flare`（默认，快速）与 `GPT-Image-2.6 Sunburst`（精细），并保留自定义模型名入口。
+  - **GPT Image 图片生成与编辑（`enableImageGeneration`）**：注册生图与修图工具，任何支持工具调用的模型（包括 DeepSeek）都可直接调用，无需切换聊天模型；实测 Codex 订阅端统一路由至 `GPT-Image-2.6 Sunburst`（默认发送与官方 Codex 一致的 `gpt-image-2`，并保留可选的自定义 `imageModelHint` 输入框）。
   - **Codex 原生上下文压缩（`enableNativeCompaction`）**：使用 OpenAI 服务端原生压缩替代默认文本摘要（仅对 Codex 订阅会话生效，失败自动回退）。装有 `dsh-codex-harness` 时随其「运行偏好 → 优先使用远程压缩」自动同步，无需单独管理。
 - **静默更新提醒与 CLI 工具**：
   - 优先查询 npm（`@shuind/dsh-codex-connect`），查不到时回退 GitHub Releases；同时校验目标版本 `engines.dsh` 是否适配当前 DSH，不适配时明确提示且同一版本仅提醒一次。

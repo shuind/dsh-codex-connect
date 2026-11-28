@@ -111,7 +111,7 @@ retryPolicy:
 - 搜索从认证开始到读完响应共用 30 秒总期限。超过 1 MiB 的响应会被拒绝，失败时会取消尚未读完的响应体。调用方也可以提前取消搜索。
 - `enableImageTool: true` 为具备视觉能力的模型注册 `view_image`。远程读取只接受不带凭据的公网 HTTP(S)，并重新检查 DNS 与重定向。
 - `enableImageGeneration: true` 注册 GPT Image 图片生成；Alpha 4.48 构建还支持编辑明确选定的会话图片。原有纯文字生图保留，可用性、尺寸和额度仍由账户及服务端控制。
-- `imageModelHint` 是“插件配置”或 profile config 中的可选设置，按 profile 保存。留空默认使用 `gpt-image-2.6-flare`；可在设置页切换 `gpt-image-2.6-flare` / `gpt-image-2.6-sunburst`，或输入自定义值（1–128 个 ASCII 字母、数字、点、下划线或连字符，且必须以字母或数字开头）。保存后会修改后续请求的 `model` 字段，仍使用固定的生成或编辑端点；清空可恢复默认值。
+- `imageModelHint` 是“插件配置”或 profile config 中的可选设置，按 profile 保存。留空时按官方 Codex 约定发送 `gpt-image-2`；实测 Codex 订阅端会统一路由至 `GPT-Image-2.6 Sunburst`（客户端传入 `gpt-image-2.6-flare` 等其他名称实际不会切换后端模型）。如需测试覆写请求体中的 `model` 字段，可输入 1–128 个 ASCII 字母、数字、点、下划线或连字符（必须以字母或数字开头）；清空可恢复默认值。
 
 生成的原文件保存在 `$DSH_HOME/dsh-codex-connect/images/v1`；对话会收到另一份 DSH 附件预览。结果卡片会报告尺寸和文件大小，并可下载任一版本。原文件仅允许所有者访问，下载前会校验完整性，并且只对创建会话及继承了该结果的 fork 开放。关闭能力或卸载插件不会自动删除这些文件。
 

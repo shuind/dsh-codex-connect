@@ -1,6 +1,5 @@
 /** Grouped settings cards: web search (with accuracy reference) and context & images. */
 
-import { useState } from 'react'
 import type { OpenAICodexSettingsConfig } from '../../shared/settings.ts'
 import type { OpenAICodexTranslate } from './AccountSection.tsx'
 import {
@@ -42,19 +41,6 @@ const FACTS_SEARCH_V2_ENTRIES = [
 
 const KAGGLE_FACTS_URL = 'https://www.kaggle.com/benchmarks/google/facts'
 
-const DEFAULT_IMAGE_MODEL = 'gpt-image-2.6-flare'
-const CUSTOM_IMAGE_MODEL_VALUE = '__custom__'
-
-const IMAGE_MODEL_PRESETS = [
-  { id: 'gpt-image-2.6-flare', labelKey: 'imageModel26Flare' },
-  { id: 'gpt-image-2.6-sunburst', labelKey: 'imageModel26Sunburst' },
-] as const
-
-function normalizePresetImageModel(value: string): string | undefined {
-  if (value === '' || value === DEFAULT_IMAGE_MODEL) return DEFAULT_IMAGE_MODEL
-  return IMAGE_MODEL_PRESETS.some(preset => preset.id === value) ? value : undefined
-}
-
 export function CapabilitiesSection({
   panelPrefix,
   visible,
@@ -67,12 +53,6 @@ export function CapabilitiesSection({
   onUpdate,
 }: CapabilitiesSectionProps) {
   const activeSearchModel = draft.searchModel.trim()
-  const [customInputFor, setCustomInputFor] = useState<string | null>(() => (
-    normalizePresetImageModel(draft.imageModelHint) !== undefined ? null : draft.imageModelHint
-  ))
-  const normalizedImageModel = normalizePresetImageModel(draft.imageModelHint)
-  const showCustomImageModel = normalizedImageModel === undefined || customInputFor === draft.imageModelHint
-  const imageModelSelectValue = showCustomImageModel ? CUSTOM_IMAGE_MODEL_VALUE : normalizedImageModel
 
   return (
     <div
@@ -301,39 +281,14 @@ export function CapabilitiesSection({
               <div style={formFieldStyle}>
                 <label style={formFieldStyle}>
                   <span style={labelStyle}>{t('imageModelHint')}</span>
-                  <select
-                    className="cc-input"
-                    value={imageModelSelectValue}
-                    onChange={event => {
-                      const next = event.currentTarget.value
-                      if (next === CUSTOM_IMAGE_MODEL_VALUE) {
-                        setCustomInputFor(draft.imageModelHint)
-                        return
-                      }
-                      setCustomInputFor(null)
-                      onUpdate('imageModelHint', next === DEFAULT_IMAGE_MODEL ? '' : next)
-                    }}
-                  >
-                    {IMAGE_MODEL_PRESETS.map(preset => (
-                      <option key={preset.id} value={preset.id}>{t(preset.labelKey)}</option>
-                    ))}
-                    <option value={CUSTOM_IMAGE_MODEL_VALUE}>{t('imageModelCustomOption')}</option>
-                  </select>
-                </label>
-                {showCustomImageModel ? (
                   <input
                     className="cc-input"
-                    aria-label={t('imageModelCustomLabel')}
                     value={draft.imageModelHint}
                     placeholder={t('imageModelHintDefault')}
                     aria-invalid={!validImageModelHint}
-                    onChange={event => {
-                      const next = event.currentTarget.value
-                      setCustomInputFor(next)
-                      onUpdate('imageModelHint', next)
-                    }}
+                    onChange={event => { onUpdate('imageModelHint', event.currentTarget.value) }}
                   />
-                ) : null}
+                </label>
                 <span style={bodyStyle}>{t('imageModelHintHelp')}</span>
               </div>
             </div>

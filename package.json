@@ -2,7 +2,7 @@
   "name": "@shuind/dsh-codex-connect",
   "displayName": "Codex Connect",
   "description": "ChatGPT OAuth and Codex models for DeepSeek Harness.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": "shuind",
   "contributors": [
     "Frank Song (original dsh-codex-connect author)",
